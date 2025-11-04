@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "587828276817",
+    "project_id": "stratum-75ee4",
+    "storage_bucket": "stratum-75ee4.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:587828276817:android:fa07f5458568f22e719270",
+        "android_client_info": {
+          "package_name": "com.example.stratum"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB24XxfN08MJrIEqFTrbgDMYGt3ZWuUuZ8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
