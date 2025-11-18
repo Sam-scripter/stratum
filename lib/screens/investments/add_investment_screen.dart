@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_widgets.dart';
-import '../../models/investment_model.dart';
+import '../../models/investment/investment_model.dart';
 
 class AddInvestmentScreen extends StatefulWidget {
   final Investment? investmentToEdit;

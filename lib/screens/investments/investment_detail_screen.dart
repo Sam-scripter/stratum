@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_widgets.dart';
-import '../../models/investment_model.dart';
+import '../../models/investment/investment_model.dart';
 import 'add_investment_screen.dart';
 
 class InvestmentDetailScreen extends StatelessWidget {

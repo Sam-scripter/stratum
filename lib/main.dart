@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:stratum/firebase_options.dart';
 import 'package:stratum/screens/home/home_screen.dart';
 import 'package:stratum/widgets/enhanced_widgets_demo.dart';
 import 'package:stratum/screens/transactions/transactions_screen.dart';
@@ -9,7 +11,11 @@ import 'package:stratum/screens/profile/profile_screen.dart';
 import 'package:stratum/screens/splash/splash_screen.dart';
 import 'package:stratum/theme/app_theme.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const StratumApp());
 }
 
@@ -54,76 +60,64 @@ class _MainScreenState extends State<MainScreen> {
       body: _screens[_selectedIndex],
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: AppTheme.surfaceGray,
+          color: const Color(0xFF1A2332),
           borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(AppTheme.radius20),
-            topRight: Radius.circular(AppTheme.radius20),
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              blurRadius: 20,
-              offset: const Offset(0, -5),
+          border: Border(
+            top: BorderSide(
+              color: Colors.white.withOpacity(0.1),
+              width: 1,
+            ),
+          ),
+        ),
+        child: BottomNavigationBar(
+          currentIndex: _selectedIndex,
+          onTap: (index) => setState(() => _selectedIndex = index),
+          type: BottomNavigationBarType.fixed,
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          selectedItemColor: Colors.white,
+          unselectedItemColor: Colors.white.withOpacity(0.5),
+          selectedLabelStyle: GoogleFonts.poppins(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+          unselectedLabelStyle: GoogleFonts.poppins(
+            fontSize: 12,
+            fontWeight: FontWeight.w400,
+          ),
+          items: [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home_outlined),
+              activeIcon: Icon(Icons.home),
+              label: 'Home',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.receipt_long_outlined),
+              activeIcon: Icon(Icons.receipt_long),
+              label: 'Transactions',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.pie_chart_outline),
+              activeIcon: Icon(Icons.pie_chart),
+              label: 'Budget',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.trending_up_outlined),
+              activeIcon: Icon(Icons.trending_up),
+              label: 'Invest',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.person_outline),
+              activeIcon: Icon(Icons.person),
+              label: 'Profile',
             ),
           ],
-        ),
-        child: ClipRRect(
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(AppTheme.radius20),
-            topRight: Radius.circular(AppTheme.radius20),
-          ),
-          child: BottomNavigationBar(
-            currentIndex: _selectedIndex,
-            onTap: (index) => setState(() => _selectedIndex = index),
-            type: BottomNavigationBarType.fixed,
-            backgroundColor: AppTheme.surfaceGray,
-            elevation: 0,
-            selectedItemColor: AppTheme.primaryGold,
-            unselectedItemColor: AppTheme.textGray,
-            selectedLabelStyle: GoogleFonts.poppins(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-            unselectedLabelStyle: GoogleFonts.poppins(
-              fontSize: 12,
-              fontWeight: FontWeight.w400,
-            ),
-            items: [
-              BottomNavigationBarItem(
-                icon: const Icon(Icons.home_rounded),
-                label: 'Home',
-                activeIcon: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppTheme.spacing12,
-                    vertical: AppTheme.spacing8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryGold.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(AppTheme.radius8),
-                  ),
-                  child: const Icon(Icons.home_rounded),
-                ),
-              ),
-              BottomNavigationBarItem(
-                icon: const Icon(Icons.receipt_long_rounded),
-                label: 'Transactions',
-              ),
-              BottomNavigationBarItem(
-                icon: const Icon(Icons.pie_chart_rounded),
-                label: 'Budget',
-              ),
-              BottomNavigationBarItem(
-                icon: const Icon(Icons.trending_up_rounded),
-                label: 'Invest',
-              ),
-              BottomNavigationBarItem(
-                icon: const Icon(Icons.person_rounded),
-                label: 'Profile',
-              ),
-            ],
-          ),
         ),
       ),
     );
   }
+
 }

@@ -1,11 +1,15 @@
+// budget_screen.dart (stratum):
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_widgets.dart';
 import 'add_budget_screen.dart';
 import 'budget_detail_screen.dart';
-import '../../models/transaction_model.dart';
-import '../../models/budget_model.dart';
+import 'savings_goal_detail_screen.dart';
+import 'add_savings_goal_screen.dart';
+import '../../models/transaction/transaction_model.dart';
+import '../../models/budget/budget_model.dart';
 
 class BudgetScreen extends StatelessWidget {
   const BudgetScreen({Key? key}) : super(key: key);
@@ -192,13 +196,47 @@ class BudgetScreen extends StatelessWidget {
             const SizedBox(height: AppTheme.spacing24),
 
             // Savings Goals
-            Text(
-              'Savings Goals',
-              style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.primaryLight,
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                GradientText(
+                  text: 'SAVINGS GOALS',
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 2,
+                  ),
+                ),
+                IconButton(
+                  icon: Container(
+                    padding: const EdgeInsets.all(AppTheme.spacing8),
+                    decoration: BoxDecoration(
+                      gradient: AppTheme.goldGradient,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.primaryGold.withOpacity(0.3),
+                          blurRadius: 8,
+                          spreadRadius: 1,
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.add,
+                      color: AppTheme.primaryDark,
+                      size: 20,
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => const AddSavingsGoalScreen(),
+                      ),
+                    );
+                  },
+                  tooltip: 'Add Savings Goal',
+                ),
+              ],
             ),
             const SizedBox(height: AppTheme.spacing16),
             _buildSavingsGoal(
@@ -206,9 +244,22 @@ class BudgetScreen extends StatelessWidget {
               50000,
               32000,
               AppTheme.accentBlue,
+              DateTime.now().add(const Duration(days: 180)),
             ),
-            _buildSavingsGoal('New Laptop', 80000, 45000, AppTheme.accentGreen),
-            _buildSavingsGoal('Vacation', 120000, 28000, AppTheme.accentOrange),
+            _buildSavingsGoal(
+              'New Laptop',
+              80000,
+              45000,
+              AppTheme.accentGreen,
+              DateTime.now().add(const Duration(days: 120)),
+            ),
+            _buildSavingsGoal(
+              'Vacation',
+              120000,
+              28000,
+              AppTheme.accentOrange,
+              DateTime.now().add(const Duration(days: 240)),
+            ),
             const SizedBox(height: AppTheme.spacing32),
           ],
         ),
@@ -345,20 +396,36 @@ class BudgetScreen extends StatelessWidget {
     double target,
     double saved,
     Color color,
+    DateTime? targetDate,
   ) {
     double percentage = saved / target;
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppTheme.spacing16),
-      padding: const EdgeInsets.all(AppTheme.spacing20),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceGray,
-        borderRadius: BorderRadius.circular(AppTheme.radius16),
-        border: Border.all(
-          color: AppTheme.borderGray.withOpacity(0.3),
-          width: 1,
-        ),
-      ),
-      child: Column(
+    return Builder(
+      builder: (context) => GestureDetector(
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => SavingsGoalDetailScreen(
+                name: name,
+                targetAmount: target,
+                savedAmount: saved,
+                color: color,
+                targetDate: targetDate,
+              ),
+            ),
+          );
+        },
+        child: Container(
+          margin: const EdgeInsets.only(bottom: AppTheme.spacing16),
+          padding: const EdgeInsets.all(AppTheme.spacing20),
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceGray,
+            borderRadius: BorderRadius.circular(AppTheme.radius16),
+            border: Border.all(
+              color: AppTheme.borderGray.withOpacity(0.3),
+              width: 1,
+            ),
+          ),
+          child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -426,6 +493,8 @@ class BudgetScreen extends StatelessWidget {
             ],
           ),
         ],
+      ),
+        ),
       ),
     );
   }

@@ -1,4 +1,4 @@
-import 'transaction_model.dart';
+import '../transaction/transaction_model.dart';
 
 class BudgetDetail {
   final String id;

@@ -1,9 +1,10 @@
-
-
-import '../models/transaction_model.dart';
+import 'package:hive/hive.dart';
+import 'package:collection/collection.dart';
+import '../models/transaction/transaction_model.dart';
 
 class FinancialService {
   static final FinancialService _instance = FinancialService._internal();
+  final String _boxName = 'transactions';
 
   factory FinancialService() {
     return _instance;
@@ -149,38 +150,86 @@ class FinancialService {
     ];
   }
 
-  // Get financial summary
+  // 1. Get Real Summary
   FinancialSummary getFinancialSummary() {
-    double totalIncome = 0;
-    double totalExpense = 0;
-    final categoryExpenses = <TransactionCategory, double>{};
+    // Return zero-state if box isn't open or doesn't exist
+    if (!Hive.isBoxOpen(_boxName)) {
+      return FinancialSummary(totalIncome: 0, totalExpense: 0);
+    }
 
-    for (var transaction in _transactions) {
-      if (transaction.type == TransactionType.income) {
-        totalIncome += transaction.amount;
+    final box = Hive.box<Transaction>(_boxName);
+    final now = DateTime.now();
+
+    // Filter for current month only
+    final thisMonthTransactions = box.values.where((t) =>
+    t.date.year == now.year && t.date.month == now.month
+    );
+
+    double income = 0;
+    double expense = 0;
+
+    for (var t in thisMonthTransactions) {
+      if (t.type == TransactionType.income) {
+        income += t.amount;
       } else {
-        totalExpense += transaction.amount;
-        categoryExpenses.update(
-          transaction.category,
-          (value) => value + transaction.amount,
-          ifAbsent: () => transaction.amount,
-        );
+        expense += t.amount;
       }
     }
 
-    final balance = totalIncome - totalExpense;
-    final savingsRate = totalIncome > 0 ? balance / totalIncome : 0.0;
-
-    // Mock net worth (in real app, this would be calculated from assets/liabilities)
-    final netWorth = 250000.0 + balance;
-
     return FinancialSummary(
-      totalIncome: totalIncome,
-      totalExpense: totalExpense,
-      netWorth: netWorth,
-      savingsRate: savingsRate,
-      categoryExpenses: categoryExpenses,
+      totalIncome: income,
+      totalExpense: expense,
     );
+  }
+
+  // 2. Get Real Recent Transactions
+  List<Transaction> getRecentTransactions({int limit = 5}) {
+    if (!Hive.isBoxOpen(_boxName)) return [];
+
+    final box = Hive.box<Transaction>(_boxName);
+    final transactions = box.values.toList();
+
+    // Sort by date descending (newest first)
+    transactions.sort((a, b) => b.date.compareTo(a.date));
+
+    return transactions.take(limit).toList();
+  }
+
+  // 3. Get Spending Categories (Fixed Enum vs String error)
+  List<MapEntry<String, double>> getTopSpendingCategories({int limit = 5}) {
+    if (!Hive.isBoxOpen(_boxName)) return [];
+
+    final box = Hive.box<Transaction>(_boxName);
+    final now = DateTime.now();
+
+    // Filter: Expenses only, This Month only
+    final expenses = box.values.where((t) =>
+    t.type == TransactionType.expense &&
+        t.date.year == now.year &&
+        t.date.month == now.month
+    );
+
+    // Group by Category (Enum)
+    final grouped = groupBy(expenses, (Transaction t) => t.category);
+
+    // Sum up amounts per category
+    final List<MapEntry<String, double>> categories = [];
+
+    // FIXED: Iterate over (Enum, List<Transaction>) and convert Enum to String
+    grouped.forEach((TransactionCategory categoryEnum, List<Transaction> transactions) {
+      double total = transactions.fold(0, (sum, t) => sum + t.amount);
+
+      // Convert Enum to String for the chart (e.g., "Groceries")
+      String rawName = categoryEnum.toString().split('.').last;
+      String categoryName = rawName[0].toUpperCase() + rawName.substring(1);
+
+      categories.add(MapEntry(categoryName, total));
+    });
+
+    // Sort highest spending first
+    categories.sort((a, b) => b.value.compareTo(a.value));
+
+    return categories.take(limit).toList();
   }
 
   // Get transactions for current month
@@ -192,13 +241,6 @@ class FinancialService {
             t.date.month == now.month)
         .toList()
       ..sort((a, b) => b.date.compareTo(a.date));
-  }
-
-  // Get recent transactions
-  List<Transaction> getRecentTransactions({int limit = 10}) {
-    return _transactions.toList()
-      ..sort((a, b) => b.date.compareTo(a.date))
-      ..take(limit);
   }
 
   // Get transactions by category
@@ -214,13 +256,4 @@ class FinancialService {
     _transactions.add(transaction);
   }
 
-  // Get top spending categories
-  List<MapEntry<TransactionCategory, double>> getTopSpendingCategories({
-    int limit = 5,
-  }) {
-    final summary = getFinancialSummary();
-    final entries = summary.categoryExpenses.entries.toList();
-    entries.sort((a, b) => b.value.compareTo(a.value));
-    return entries.take(limit).toList();
-  }
 }

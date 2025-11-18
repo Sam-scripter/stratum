@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_widgets.dart';
-import '../../models/budget_model.dart';
-import '../../models/transaction_model.dart';
+import '../../models/budget/budget_model.dart';
+import '../../models/transaction/transaction_model.dart';
 import 'add_budget_screen.dart';
 
 class BudgetDetailScreen extends StatelessWidget {

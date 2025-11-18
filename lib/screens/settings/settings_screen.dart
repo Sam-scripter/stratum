@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_widgets.dart';
+import '../../services/auth_service.dart';
+import '../../screens/auth/login_screen.dart';
 import 'account_settings_screen.dart';
 import 'mpesa_integration_screen.dart';
 import 'notification_settings_screen.dart';
@@ -266,61 +268,7 @@ class SettingsScreen extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton(
-                onPressed: () {
-                  showDialog(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      backgroundColor: AppTheme.surfaceGray,
-                      title: Text(
-                        'Logout',
-                        style: GoogleFonts.poppins(
-                          color: AppTheme.primaryLight,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      content: Text(
-                        'Are you sure you want to logout?',
-                        style: GoogleFonts.poppins(
-                          color: AppTheme.textGray,
-                        ),
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: Text(
-                            'Cancel',
-                            style: GoogleFonts.poppins(
-                              color: AppTheme.textGray,
-                            ),
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Logged out successfully'),
-                                backgroundColor: AppTheme.accentGreen,
-                              ),
-                            );
-                            // Navigate to login screen
-                            // Navigator.of(context).pushAndRemoveUntil(
-                            //   MaterialPageRoute(builder: (context) => LoginScreen()),
-                            //   (route) => false,
-                            // );
-                          },
-                          child: Text(
-                            'Logout',
-                            style: GoogleFonts.poppins(
-                              color: AppTheme.accentRed,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
+                onPressed: () => _showLogoutDialog(context),
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: AppTheme.spacing16),
                   side: const BorderSide(color: AppTheme.accentRed, width: 1.5),
@@ -415,6 +363,115 @@ class SettingsScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  void _showLogoutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A2332),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(
+            color: Colors.white.withOpacity(0.1),
+          ),
+        ),
+        title: Text(
+          'Logout',
+          style: GoogleFonts.poppins(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+            fontSize: 20,
+          ),
+        ),
+        content: Text(
+          'Are you sure you want to logout?',
+          style: GoogleFonts.poppins(
+            color: Colors.white.withOpacity(0.7),
+            fontSize: 14,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.poppins(
+                color: Colors.white.withOpacity(0.6),
+                fontSize: 14,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+              await _handleLogout(context);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.accentRed,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              elevation: 0,
+            ),
+            child: Text(
+              'Logout',
+              style: GoogleFonts.poppins(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleLogout(BuildContext context) async {
+    try {
+      final authService = AuthService();
+      await authService.signOut();
+
+      if (context.mounted) {
+        // Use rootNavigator to ensure we navigate from the root of the navigation stack
+        Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (context) => const LoginScreen(),
+          ),
+          (Route<dynamic> route) => false,
+        );
+
+        // Show success message after navigation
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Logged out successfully'),
+                backgroundColor: AppTheme.accentGreen,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            );
+          }
+        });
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error logging out: ${e.toString()}'),
+            backgroundColor: AppTheme.accentRed,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        );
+      }
+    }
   }
 }
 

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_widgets.dart';
-import '../../models/transaction_model.dart';
+import '../../models/transaction/transaction_model.dart';
 import 'add_transaction_screen.dart';
 
 class TransactionDetailScreen extends StatelessWidget {
@@ -173,7 +173,7 @@ class TransactionDetailScreen extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        transaction.formattedAmount.replaceAll('KES ', ''),
+                        transaction as String,
                         style: GoogleFonts.poppins(
                           fontSize: 42,
                           fontWeight: FontWeight.w700,
@@ -250,13 +250,13 @@ class TransactionDetailScreen extends StatelessWidget {
                   const SizedBox(height: AppTheme.spacing16),
                   _buildInfoRow(
                     'Date',
-                    transaction.formattedDate,
+                    transaction as String,
                     AppTheme.textGray,
                   ),
                   const SizedBox(height: AppTheme.spacing16),
                   _buildInfoRow(
                     'Time',
-                    transaction.formattedTime,
+                    transaction as String,
                     AppTheme.textGray,
                   ),
                   const SizedBox(height: AppTheme.spacing16),

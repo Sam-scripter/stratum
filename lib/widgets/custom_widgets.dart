@@ -1,8 +1,142 @@
+import 'dart:math';
+import 'dart:math' as math;
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../theme/app_theme.dart';
 
-// Premium Card Widget with Enhanced Multi-Layer Shadows
+// Gradient Text Widget with ShaderMask
+class GradientText extends StatelessWidget {
+  final String text;
+  final TextStyle? style;
+  final TextAlign? textAlign;
+  final Gradient gradient;
+
+  const GradientText({
+    Key? key,
+    required this.text,
+    this.style,
+    this.textAlign,
+    this.gradient = AppTheme.goldToPlatinumGradient,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return ShaderMask(
+      shaderCallback: (bounds) => gradient.createShader(bounds),
+      child: Text(
+        text,
+        style: (style ?? TextStyle()).copyWith(color: Colors.white),
+        textAlign: textAlign,
+      ),
+    );
+  }
+}
+
+// Glassmorphic Card Widget
+class GlassmorphicCard extends StatelessWidget {
+  final Widget child;
+  final EdgeInsets padding;
+  final VoidCallback? onTap;
+  final double blur;
+  final double opacity;
+  final BorderRadius? borderRadius;
+  final Border? border;
+
+  const GlassmorphicCard({
+    Key? key,
+    required this.child,
+    this.padding = const EdgeInsets.all(AppTheme.spacing16),
+    this.onTap,
+    this.blur = 10.0,
+    this.opacity = 0.15,
+    this.borderRadius,
+    this.border,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: ClipRRect(
+        borderRadius: borderRadius ?? BorderRadius.circular(AppTheme.radius20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+          child: Container(
+            padding: padding,
+            decoration: BoxDecoration(
+              color: AppTheme.cardBg.withOpacity(opacity),
+              borderRadius: borderRadius ?? BorderRadius.circular(AppTheme.radius20),
+              border: border ??
+                  Border.all(
+                    color: AppTheme.primaryGold.withOpacity(0.2),
+                    width: 1.5,
+                  ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 20,
+                  spreadRadius: -5,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Clean Card Widget - Matching home_screen1.dart design
+class CleanCard extends StatelessWidget {
+  final Widget child;
+  final EdgeInsets padding;
+  final VoidCallback? onTap;
+  final Color? backgroundColor;
+  final double borderRadius;
+  final Color? borderColor;
+  final double borderOpacity;
+
+  const CleanCard({
+    Key? key,
+    required this.child,
+    this.padding = const EdgeInsets.all(20),
+    this.onTap,
+    this.backgroundColor,
+    this.borderRadius = 16,
+    this.borderColor,
+    this.borderOpacity = 0.05,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final card = Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: backgroundColor ?? const Color(0xFF1A2332),
+        borderRadius: BorderRadius.circular(borderRadius),
+        border: Border.all(
+          color: (borderColor ?? Colors.white).withOpacity(borderOpacity),
+        ),
+      ),
+      child: child,
+    );
+
+    if (onTap != null) {
+      return GestureDetector(
+        onTap: onTap,
+        child: card,
+      );
+    }
+
+    return card;
+  }
+}
+
+// Premium Card Widget - Updated to use clean design by default
+// Kept for backward compatibility, but now uses CleanCard style
 class PremiumCard extends StatelessWidget {
   final Widget child;
   final EdgeInsets padding;
@@ -11,6 +145,8 @@ class PremiumCard extends StatelessWidget {
   final double? elevation;
   final bool hasGlow;
   final bool isSelected;
+  final bool isGlassmorphic;
+  final double blur;
 
   const PremiumCard({
     Key? key,
@@ -21,53 +157,20 @@ class PremiumCard extends StatelessWidget {
     this.elevation,
     this.hasGlow = false,
     this.isSelected = false,
+    this.isGlassmorphic = false,
+    this.blur = 10.0,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    // Use clean design by default - no glassmorphism, no glows, no complex shadows
+    return CleanCard(
+      padding: padding,
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: padding,
-        decoration: BoxDecoration(
-          color: backgroundColor ?? AppTheme.surfaceGray,
-          borderRadius: BorderRadius.circular(AppTheme.radius20),
-          // Multi-layer shadow system for premium depth
-          boxShadow: [
-            // Soft gold glow (outer) - when enabled
-            if (hasGlow || isSelected)
-              BoxShadow(
-                color: AppTheme.primaryGold.withOpacity(0.15),
-                blurRadius: 20,
-                spreadRadius: -2,
-                offset: const Offset(0, 8),
-              ),
-            // Deep shadow for depth
-            BoxShadow(
-              color: Colors.black.withOpacity(0.4),
-              blurRadius: 15,
-              spreadRadius: -3,
-              offset: const Offset(0, 6),
-            ),
-            // Sharp shadow for definition
-            BoxShadow(
-              color: Colors.black.withOpacity(0.2),
-              blurRadius: 8,
-              spreadRadius: 0,
-              offset: const Offset(0, 2),
-            ),
-          ],
-          // Subtle gold border when selected
-          border: isSelected
-              ? Border.all(
-                  color: AppTheme.primaryGold.withOpacity(0.5),
-                  width: 1.5,
-                )
-              : null,
-        ),
-        child: child,
-      ),
+      backgroundColor: backgroundColor,
+      borderRadius: isGlassmorphic ? AppTheme.radius20 : 16,
+      borderOpacity: isSelected ? 0.1 : 0.05,
+      child: child,
     );
   }
 }
@@ -289,7 +392,8 @@ class _AIInsightCardState extends State<AIInsightCard> with SingleTickerProvider
     return FadeTransition(
       opacity: _fadeAnimation,
       child: PremiumCard(
-        backgroundColor: AppTheme.surfaceGray,
+        backgroundColor: AppTheme.cardBg,
+        isGlassmorphic: true,
         padding: const EdgeInsets.all(AppTheme.spacing20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -672,4 +776,174 @@ class CategoryChip extends StatelessWidget {
       ),
     );
   }
+}
+
+// Shimmer Animation Widget
+class ShimmerWidget extends StatefulWidget {
+  final Widget child;
+  final Duration duration;
+  final Gradient gradient;
+
+  const ShimmerWidget({
+    Key? key,
+    required this.child,
+    this.duration = const Duration(milliseconds: 2000),
+    this.gradient = AppTheme.goldShimmerGradient,
+  }) : super(key: key);
+
+  @override
+  State<ShimmerWidget> createState() => _ShimmerWidgetState();
+}
+
+class _ShimmerWidgetState extends State<ShimmerWidget>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: widget.duration,
+    )..repeat();
+    _animation = Tween<double>(begin: -2.0, end: 2.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.linear),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        return ShaderMask(
+          shaderCallback: (bounds) {
+            return LinearGradient(
+              begin: Alignment(_animation.value - 0.5, 0),
+              end: Alignment(_animation.value + 0.5, 0),
+              colors: widget.gradient.colors,
+              stops: widget.gradient.stops,
+            ).createShader(bounds);
+          },
+          child: widget.child,
+        );
+      },
+    );
+  }
+}
+
+// Animated Particles Background
+class AnimatedParticles extends StatefulWidget {
+  final int particleCount;
+  final Color color;
+  final double size;
+
+  const AnimatedParticles({
+    Key? key,
+    this.particleCount = 20,
+    this.color = AppTheme.primaryGold,
+    this.size = 3.0,
+  }) : super(key: key);
+
+  @override
+  State<AnimatedParticles> createState() => _AnimatedParticlesState();
+}
+
+class _AnimatedParticlesState extends State<AnimatedParticles>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late List<Particle> _particles;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 20),
+    )..repeat();
+    _particles = List.generate(
+      widget.particleCount,
+      (index) => Particle.random(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return CustomPaint(
+          painter: ParticlesPainter(
+            particles: _particles,
+            animationValue: _controller.value,
+            color: widget.color,
+            size: widget.size,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class Particle {
+  final double x;
+  final double y;
+  final double speed;
+
+  Particle(this.x, this.y, this.speed);
+
+  factory Particle.random() {
+    return Particle(
+      (0.0 + (1.0 - 0.0) * (DateTime.now().millisecond % 1000) / 1000),
+      (0.0 + (1.0 - 0.0) * ((DateTime.now().millisecond * 7) % 1000) / 1000),
+      0.5 + (0.5 * ((DateTime.now().millisecond * 3) % 100) / 100),
+    );
+  }
+}
+
+class ParticlesPainter extends CustomPainter {
+  final List<Particle> particles;
+  final double animationValue;
+  final Color color;
+  final double size;
+
+  ParticlesPainter({
+    required this.particles,
+    required this.animationValue,
+    required this.color,
+    required this.size,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    for (final particle in particles) {
+      final opacity = (0.1 + (0.3 * math.sin(animationValue * 2 * math.pi + particle.x * 10)).abs()).clamp(0.1, 0.4);
+      final currentPaint = paint..color = color.withOpacity(opacity);
+      canvas.drawCircle(
+        Offset(particle.x * size.width, particle.y * size.height),
+        this.size,
+        currentPaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }

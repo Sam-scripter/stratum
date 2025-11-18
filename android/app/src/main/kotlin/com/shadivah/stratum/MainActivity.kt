@@ -1,4 +1,4 @@
-package com.example.stratum
+package com.shadivah.stratum
 
 import io.flutter.embedding.android.FlutterActivity
 
