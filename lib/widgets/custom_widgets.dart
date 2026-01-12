@@ -89,7 +89,7 @@ class GlassmorphicCard extends StatelessWidget {
   }
 }
 
-// Clean Card Widget - Matching home_screen1.dart design
+// Clean Card Widget - Matching design
 class CleanCard extends StatelessWidget {
   final Widget child;
   final EdgeInsets padding;

@@ -25,7 +25,7 @@ class Account extends HiveObject {
   late String name; // e.g., "M-Pesa", "KCB", "Wallet"
 
   @HiveField(2)
-  late double currentBalance;
+  late double balance; // Changed from currentBalance to match parser logic
 
   @HiveField(3)
   late AccountType type;
@@ -34,14 +34,40 @@ class Account extends HiveObject {
   late bool isAutomated; // True if updated via SMS
 
   @HiveField(5)
-  DateTime lastUpdated;
+  late DateTime lastUpdated;
+
+  // NEW FIELD: Used by SMS parser to match incoming messages
+  @HiveField(6)
+  late String senderAddress;
 
   Account({
     required this.id,
     required this.name,
-    required this.currentBalance,
+    required this.balance,
     required this.type,
     this.isAutomated = false,
     required this.lastUpdated,
+    required this.senderAddress,
   });
+
+  // REQUIRED FIX: Adding copyWith method for cleaner updates in SmsParser
+  Account copyWith({
+    String? id,
+    String? name,
+    double? balance,
+    AccountType? type,
+    bool? isAutomated,
+    DateTime? lastUpdated,
+    String? senderAddress,
+  }) {
+    return Account(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      balance: balance ?? this.balance,
+      type: type ?? this.type,
+      isAutomated: isAutomated ?? this.isAutomated,
+      lastUpdated: lastUpdated ?? this.lastUpdated,
+      senderAddress: senderAddress ?? this.senderAddress,
+    );
+  }
 }

@@ -19,29 +19,32 @@ class AccountAdapter extends TypeAdapter<Account> {
     return Account(
       id: fields[0] as String,
       name: fields[1] as String,
-      currentBalance: fields[2] as double,
+      balance: fields[2] as double,
       type: fields[3] as AccountType,
       isAutomated: fields[4] as bool,
       lastUpdated: fields[5] as DateTime,
+      senderAddress: fields[6] as String,
     );
   }
 
   @override
   void write(BinaryWriter writer, Account obj) {
     writer
-      ..writeByte(6)
+      ..writeByte(7)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
       ..write(obj.name)
       ..writeByte(2)
-      ..write(obj.currentBalance)
+      ..write(obj.balance)
       ..writeByte(3)
       ..write(obj.type)
       ..writeByte(4)
       ..write(obj.isAutomated)
       ..writeByte(5)
-      ..write(obj.lastUpdated);
+      ..write(obj.lastUpdated)
+      ..writeByte(6)
+      ..write(obj.senderAddress);
   }
 
   @override

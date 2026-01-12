@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:stratum/screens/auth/signup_screen.dart';
 import 'package:stratum/screens/auth/forgot_password_dialog.dart';
-import 'package:stratum/services/auth_service.dart';
+import 'package:stratum/services/auth/auth_service.dart';
+import 'package:stratum/models/box_manager.dart';
+import 'package:stratum/models/app settings/app_settings.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../onboarding/sms_scanning_screen.dart';
 import '../../theme/app_theme.dart';
 import '../../main.dart';
 
@@ -38,11 +42,31 @@ class _LoginScreenState extends State<LoginScreen> {
         );
 
         if (user != null && mounted) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (context) => const MainScreen(),
-            ),
+          // Check if onboarding is complete
+          final boxManager = BoxManager();
+          await boxManager.openAllBoxes(user.uid);
+          final settingsBox = boxManager.getBox<AppSettings>(
+            BoxManager.settingsBoxName,
+            user.uid,
           );
+          final appSettings = settingsBox.get(user.uid) ?? AppSettings();
+          final hasCompletedOnboarding = appSettings.initialScanComplete;
+          
+          if (hasCompletedOnboarding) {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (context) => const MainScreen(),
+              ),
+            );
+          } else {
+            // Show SMS scanning screen for first-time users
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (context) => const SmsScanningScreen(),
+              ),
+            );
+          }
+          
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: const Text('Welcome back!'),

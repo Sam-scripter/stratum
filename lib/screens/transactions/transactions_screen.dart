@@ -407,6 +407,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       type: transaction.amount >= 0 ? TransactionType.income : TransactionType.expense,
       category: TransactionCategory.other,
       date: DateTime.now(),
+      accountId: 'mock_account', // Mock account ID for display purposes
     );
 
     return Builder(

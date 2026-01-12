@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:stratum/services/auth_service.dart';
+import 'package:stratum/services/auth/auth_service.dart';
 import '../auth/login_screen.dart';
+import '../onboarding/welcome_screen.dart';
 import '../../main.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -54,9 +55,10 @@ class _SplashScreenState extends State<SplashScreen>
             ),
           );
         } else {
+          // Show onboarding before login
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(
-              builder: (context) => const LoginScreen(),
+              builder: (context) => const WelcomeScreen(),
             ),
           );
         }

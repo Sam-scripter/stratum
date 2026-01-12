@@ -8,7 +8,7 @@ part of 'transaction_model.dart';
 
 class TransactionAdapter extends TypeAdapter<Transaction> {
   @override
-  final int typeId = 11;
+  final int typeId = 1;
 
   @override
   Transaction read(BinaryReader reader) {
@@ -24,16 +24,20 @@ class TransactionAdapter extends TypeAdapter<Transaction> {
       category: fields[4] as TransactionCategory,
       date: fields[5] as DateTime,
       description: fields[6] as String?,
-      mpesaCode: fields[7] as String?,
-      recipient: fields[8] as String?,
+      recipient: fields[7] as String?,
+      mpesaCode: fields[8] as String?,
       isRecurring: fields[9] as bool,
+      accountId: fields[10] as String,
+      originalSms: fields[11] as String?,
+      newBalance: fields[12] as double?,
+      reference: fields[13] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Transaction obj) {
     writer
-      ..writeByte(10)
+      ..writeByte(14)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -49,11 +53,19 @@ class TransactionAdapter extends TypeAdapter<Transaction> {
       ..writeByte(6)
       ..write(obj.description)
       ..writeByte(7)
-      ..write(obj.mpesaCode)
-      ..writeByte(8)
       ..write(obj.recipient)
+      ..writeByte(8)
+      ..write(obj.mpesaCode)
       ..writeByte(9)
-      ..write(obj.isRecurring);
+      ..write(obj.isRecurring)
+      ..writeByte(10)
+      ..write(obj.accountId)
+      ..writeByte(11)
+      ..write(obj.originalSms)
+      ..writeByte(12)
+      ..write(obj.newBalance)
+      ..writeByte(13)
+      ..write(obj.reference);
   }
 
   @override
@@ -69,7 +81,7 @@ class TransactionAdapter extends TypeAdapter<Transaction> {
 
 class TransactionTypeAdapter extends TypeAdapter<TransactionType> {
   @override
-  final int typeId = 9;
+  final int typeId = 2;
 
   @override
   TransactionType read(BinaryReader reader) {
@@ -108,7 +120,7 @@ class TransactionTypeAdapter extends TypeAdapter<TransactionType> {
 
 class TransactionCategoryAdapter extends TypeAdapter<TransactionCategory> {
   @override
-  final int typeId = 10;
+  final int typeId = 3;
 
   @override
   TransactionCategory read(BinaryReader reader) {
@@ -118,27 +130,29 @@ class TransactionCategoryAdapter extends TypeAdapter<TransactionCategory> {
       case 1:
         return TransactionCategory.freelance;
       case 2:
-        return TransactionCategory.mpesa;
+        return TransactionCategory.utilities;
       case 3:
         return TransactionCategory.groceries;
       case 4:
         return TransactionCategory.transport;
       case 5:
-        return TransactionCategory.utilities;
-      case 6:
         return TransactionCategory.entertainment;
-      case 7:
+      case 6:
         return TransactionCategory.dining;
-      case 8:
-        return TransactionCategory.shopping;
-      case 9:
+      case 7:
         return TransactionCategory.health;
-      case 10:
-        return TransactionCategory.education;
-      case 11:
+      case 8:
         return TransactionCategory.investment;
-      case 12:
+      case 9:
+        return TransactionCategory.shopping;
+      case 10:
+        return TransactionCategory.transfer;
+      case 11:
         return TransactionCategory.other;
+      case 12:
+        return TransactionCategory.manual;
+      case 13:
+        return TransactionCategory.general;
       default:
         return TransactionCategory.salary;
     }
@@ -153,7 +167,7 @@ class TransactionCategoryAdapter extends TypeAdapter<TransactionCategory> {
       case TransactionCategory.freelance:
         writer.writeByte(1);
         break;
-      case TransactionCategory.mpesa:
+      case TransactionCategory.utilities:
         writer.writeByte(2);
         break;
       case TransactionCategory.groceries:
@@ -162,29 +176,32 @@ class TransactionCategoryAdapter extends TypeAdapter<TransactionCategory> {
       case TransactionCategory.transport:
         writer.writeByte(4);
         break;
-      case TransactionCategory.utilities:
+      case TransactionCategory.entertainment:
         writer.writeByte(5);
         break;
-      case TransactionCategory.entertainment:
+      case TransactionCategory.dining:
         writer.writeByte(6);
         break;
-      case TransactionCategory.dining:
+      case TransactionCategory.health:
         writer.writeByte(7);
         break;
-      case TransactionCategory.shopping:
+      case TransactionCategory.investment:
         writer.writeByte(8);
         break;
-      case TransactionCategory.health:
+      case TransactionCategory.shopping:
         writer.writeByte(9);
         break;
-      case TransactionCategory.education:
+      case TransactionCategory.transfer:
         writer.writeByte(10);
         break;
-      case TransactionCategory.investment:
+      case TransactionCategory.other:
         writer.writeByte(11);
         break;
-      case TransactionCategory.other:
+      case TransactionCategory.manual:
         writer.writeByte(12);
+        break;
+      case TransactionCategory.general:
+        writer.writeByte(13);
         break;
     }
   }

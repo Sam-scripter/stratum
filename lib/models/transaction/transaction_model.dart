@@ -1,79 +1,90 @@
 import 'package:hive/hive.dart';
-import 'package:intl/intl.dart';
 
 part 'transaction_model.g.dart';
 
-// Assign unique TypeIds. Account used 6, 7, 8. Let's use 9, 10, 11.
-
-@HiveType(typeId: 9)
+@HiveType(typeId: 2) // Ensure ID is unique
 enum TransactionType {
   @HiveField(0)
   income,
   @HiveField(1)
-  expense
+  expense,
 }
 
-@HiveType(typeId: 10)
+@HiveType(typeId: 3) // Ensure ID is unique
 enum TransactionCategory {
   @HiveField(0)
   salary,
   @HiveField(1)
   freelance,
   @HiveField(2)
-  mpesa,
+  utilities,
   @HiveField(3)
   groceries,
   @HiveField(4)
   transport,
   @HiveField(5)
-  utilities,
-  @HiveField(6)
   entertainment,
-  @HiveField(7)
+  @HiveField(6)
   dining,
-  @HiveField(8)
-  shopping,
-  @HiveField(9)
+  @HiveField(7)
   health,
-  @HiveField(10)
-  education,
-  @HiveField(11)
+  @HiveField(8)
   investment,
+  @HiveField(9)
+  shopping,
+  @HiveField(10)
+  transfer,
+  @HiveField(11)
+  other,
   @HiveField(12)
-  other
+  manual,
+  @HiveField(13)
+  general,
 }
 
-@HiveType(typeId: 11)
+@HiveType(typeId: 1) // Ensure ID is unique
 class Transaction extends HiveObject {
   @HiveField(0)
-  final String id;
+  late String id;
 
   @HiveField(1)
-  final String title;
+  late String title;
 
   @HiveField(2)
-  final double amount;
+  late double amount;
 
   @HiveField(3)
-  final TransactionType type;
+  late TransactionType type;
 
   @HiveField(4)
-  final TransactionCategory category;
+  late TransactionCategory category;
 
   @HiveField(5)
-  final DateTime date;
+  late DateTime date;
 
   @HiveField(6)
-  final String? description;
+  late String? description;
 
   @HiveField(7)
-  final String? mpesaCode;
+  late String? recipient;
 
   @HiveField(8)
-  final String? recipient;
+  late String? mpesaCode;
 
   @HiveField(9)
-  final bool isRecurring;
+  late bool isRecurring;
+
+  @HiveField(10)
+  late String accountId;
+
+  @HiveField(11)
+  late String? originalSms; // Store original SMS for learning
+
+  @HiveField(12)
+  late double? newBalance; // Balance after transaction
+
+  @HiveField(13)
+  late String? reference; // Transaction reference code
 
   Transaction({
     required this.id,
@@ -83,9 +94,13 @@ class Transaction extends HiveObject {
     required this.category,
     required this.date,
     this.description,
-    this.mpesaCode,
     this.recipient,
+    this.mpesaCode,
     this.isRecurring = false,
+    required this.accountId,
+    this.originalSms,
+    this.newBalance,
+    this.reference,
   });
 
   // Helper Getters
@@ -99,33 +114,18 @@ class Transaction extends HiveObject {
     switch (category) {
       case TransactionCategory.salary: return '💼';
       case TransactionCategory.freelance: return '💻';
-      case TransactionCategory.mpesa: return '📱';
+      case TransactionCategory.utilities: return '⚡';
       case TransactionCategory.groceries: return '🛒';
       case TransactionCategory.transport: return '🚗';
-      case TransactionCategory.utilities: return '⚡';
       case TransactionCategory.entertainment: return '🎬';
       case TransactionCategory.dining: return '🍽️';
       case TransactionCategory.shopping: return '🛍️';
       case TransactionCategory.health: return '🏥';
-      case TransactionCategory.education: return '📚';
       case TransactionCategory.investment: return '📈';
+      case TransactionCategory.transfer: return '🔁'; // Fixed
+      case TransactionCategory.manual: return '📝'; // Fixed
       case TransactionCategory.other: return '📌';
+      case TransactionCategory.general: return '📌';
     }
   }
-}
-
-// Simplified Summary Class
-// We removed 'netWorth' because that is now calculated in HomeScreen via Accounts
-class FinancialSummary {
-  final double totalIncome;
-  final double totalExpense;
-
-  // These are calculated getters now
-  double get balance => totalIncome - totalExpense;
-  double get savingsRate => totalIncome == 0 ? 0 : (balance / totalIncome);
-
-  FinancialSummary({
-    required this.totalIncome,
-    required this.totalExpense,
-  });
 }

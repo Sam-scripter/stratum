@@ -142,6 +142,7 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
       type: TransactionType.expense,
       category: category,
       date: DateTime.now(),
+      accountId: '', // Empty account ID for display purposes only
     );
     return transaction.categoryEmoji;
   }
@@ -154,6 +155,7 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
       type: TransactionType.expense,
       category: category,
       date: DateTime.now(),
+      accountId: '', // Empty account ID for display purposes only
     );
     return transaction.categoryName;
   }
@@ -284,7 +286,6 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
                       children: TransactionCategory.values
                           .where((cat) => cat != TransactionCategory.salary &&
                               cat != TransactionCategory.freelance &&
-                              cat != TransactionCategory.mpesa &&
                               cat != TransactionCategory.investment)
                           .map((category) {
                         final isSelected = _selectedCategory == category;

@@ -22,6 +22,7 @@ class BudgetDetailScreen extends StatelessWidget {
       type: TransactionType.expense,
       category: category,
       date: DateTime.now(),
+      accountId: '', // Empty account ID for display purposes only
     );
     return transaction.categoryEmoji;
   }
@@ -34,6 +35,7 @@ class BudgetDetailScreen extends StatelessWidget {
       type: TransactionType.expense,
       category: category,
       date: DateTime.now(),
+      accountId: '', // Empty account ID for display purposes only
     );
     return transaction.categoryName;
   }

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_widgets.dart';
-import '../../services/auth_service.dart';
+import '../../services/auth/auth_service.dart';
 import '../../screens/auth/login_screen.dart';
 import 'account_settings_screen.dart';
 import 'mpesa_integration_screen.dart';

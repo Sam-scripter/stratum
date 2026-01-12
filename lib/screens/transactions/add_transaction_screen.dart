@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:uuid/uuid.dart';
+import 'package:hive/hive.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_widgets.dart';
 import '../../models/transaction/transaction_model.dart';
+import '../../models/account/account_model.dart';
+import '../../models/box_manager.dart';
 
 class AddTransactionScreen extends StatefulWidget {
   final Transaction? transactionToEdit;
@@ -19,6 +24,9 @@ class AddTransactionScreen extends StatefulWidget {
 
 class _AddTransactionScreenState extends State<AddTransactionScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _uuid = const Uuid();
+  final BoxManager _boxManager = BoxManager();
+
   late final TextEditingController _titleController;
   late final TextEditingController _amountController;
   late final TextEditingController _descriptionController;
@@ -30,12 +38,17 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
   late DateTime _selectedDate;
   late TimeOfDay _selectedTime;
   late bool _isRecurring;
+  String? _selectedAccountId;
   bool _isLoading = false;
+  bool _isLoadingAccounts = true;
+  List<Account> _accounts = [];
+
   bool get _isEditing => widget.transactionToEdit != null;
 
   @override
   void initState() {
     super.initState();
+    _loadAccounts();
     if (_isEditing) {
       final transaction = widget.transactionToEdit!;
       _titleController = TextEditingController(text: transaction.title);
@@ -48,6 +61,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
       _selectedDate = transaction.date;
       _selectedTime = TimeOfDay.fromDateTime(transaction.date);
       _isRecurring = transaction.isRecurring;
+      _selectedAccountId = transaction.accountId;
     } else {
       _titleController = TextEditingController();
       _amountController = TextEditingController();
@@ -60,6 +74,37 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
       _selectedTime = TimeOfDay.now();
       _isRecurring = false;
     }
+  }
+
+  Future<void> _loadAccounts() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() => _isLoadingAccounts = true);
+      }
+    });
+    
+    await _boxManager.openAllBoxes(user.uid);
+    
+    final accountsBox = _boxManager.getBox<Account>(BoxManager.accountsBoxName, user.uid);
+    final accounts = accountsBox.values.toList();
+    
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          _accounts = accounts;
+          _isLoadingAccounts = false;
+          // Set default account if none selected and accounts exist
+          if (_selectedAccountId == null && accounts.isNotEmpty) {
+            _selectedAccountId = accounts.first.id;
+          }
+        });
+      }
+    });
   }
 
   @override
@@ -81,9 +126,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
       builder: (context, child) {
         return Theme(
           data: ThemeData.dark().copyWith(
-            primaryColor: AppTheme.primaryGold,
+            primaryColor: AppTheme.accentBlue,
             colorScheme: ColorScheme.dark(
-              primary: AppTheme.primaryGold,
+              primary: AppTheme.accentBlue,
               onPrimary: AppTheme.primaryDark,
               surface: AppTheme.surfaceGray,
               onSurface: AppTheme.primaryLight,
@@ -94,7 +139,13 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
       },
     );
     if (picked != null && picked != _selectedDate) {
-      setState(() => _selectedDate = picked);
+      if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() => _selectedDate = picked);
+          }
+        });
+      }
     }
   }
 
@@ -105,9 +156,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
       builder: (context, child) {
         return Theme(
           data: ThemeData.dark().copyWith(
-            primaryColor: AppTheme.primaryGold,
+            primaryColor: AppTheme.accentBlue,
             colorScheme: ColorScheme.dark(
-              primary: AppTheme.primaryGold,
+              primary: AppTheme.accentBlue,
               onPrimary: AppTheme.primaryDark,
               surface: AppTheme.surfaceGray,
               onSurface: AppTheme.primaryLight,
@@ -118,29 +169,215 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
       },
     );
     if (picked != null && picked != _selectedTime) {
-      setState(() => _selectedTime = picked);
+      if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() => _selectedTime = picked);
+          }
+        });
+      }
     }
   }
 
-  void _handleSubmit() {
-    if (_formKey.currentState!.validate()) {
-      setState(() => _isLoading = true);
-      // Simulate saving transaction
-      Future.delayed(const Duration(seconds: 1), () {
-        if (mounted) {
-          setState(() => _isLoading = false);
-          Navigator.of(context).pop(true);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(_isEditing
-                  ? 'Transaction updated successfully!'
-                  : 'Transaction added successfully!'),
-              backgroundColor: AppTheme.accentGreen,
-            ),
-          );
-        }
-      });
+  Future<void> _handleSubmit() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_selectedAccountId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select an account'),
+          backgroundColor: AppTheme.accentRed,
+        ),
+      );
+      return;
     }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('User not logged in');
+      }
+
+      await _boxManager.openAllBoxes(user.uid);
+      final transactionsBox = _boxManager.getBox<Transaction>(
+          BoxManager.transactionsBoxName, user.uid);
+      final accountsBox = _boxManager.getBox<Account>(
+          BoxManager.accountsBoxName, user.uid);
+
+      // Combine date and time
+      final transactionDate = DateTime(
+        _selectedDate.year,
+        _selectedDate.month,
+        _selectedDate.day,
+        _selectedTime.hour,
+        _selectedTime.minute,
+      );
+
+      final amount = double.parse(_amountController.text);
+      final transactionId = _isEditing
+          ? widget.transactionToEdit!.id
+          : _uuid.v4();
+
+      // Get old transaction if editing
+      Transaction? oldTransaction;
+      Account? account = accountsBox.get(_selectedAccountId!);
+      if (account == null) {
+        throw Exception('Account not found');
+      }
+
+      if (_isEditing) {
+        oldTransaction = transactionsBox.get(transactionId);
+        // Revert old transaction's effect on balance
+        if (oldTransaction != null) {
+          if (oldTransaction.type == TransactionType.income) {
+            account = account.copyWith(balance: account.balance - oldTransaction.amount);
+          } else {
+            account = account.copyWith(balance: account.balance + oldTransaction.amount);
+          }
+        }
+      }
+
+      // Create or update transaction
+      final transaction = Transaction(
+        id: transactionId,
+        title: _titleController.text.trim(),
+        amount: amount,
+        type: _selectedType,
+        category: _selectedCategory,
+        date: transactionDate,
+        description: _descriptionController.text.trim().isEmpty
+            ? null
+            : _descriptionController.text.trim(),
+        recipient: _recipientController.text.trim().isEmpty
+            ? null
+            : _recipientController.text.trim(),
+        mpesaCode: _mpesaCodeController.text.trim().isEmpty
+            ? null
+            : _mpesaCodeController.text.trim(),
+        isRecurring: _isRecurring,
+        accountId: _selectedAccountId!,
+      );
+
+      // Update account balance
+      if (_selectedType == TransactionType.income) {
+        account = account.copyWith(
+          balance: account.balance + amount,
+          lastUpdated: DateTime.now(),
+        );
+      } else {
+        account = account.copyWith(
+          balance: account.balance - amount,
+          lastUpdated: DateTime.now(),
+        );
+      }
+
+      // Save to Hive
+      transactionsBox.put(transactionId, transaction);
+      accountsBox.put(_selectedAccountId!, account);
+
+      if (mounted) {
+        setState(() => _isLoading = false);
+        Navigator.of(context).pop(true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_isEditing
+                ? 'Transaction updated successfully!'
+                : 'Transaction added successfully!'),
+            backgroundColor: AppTheme.accentGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: AppTheme.accentRed,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showCategoryDropdown() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surfaceGray,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(AppTheme.spacing16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Select Category',
+                style: GoogleFonts.poppins(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.primaryLight,
+                ),
+              ),
+              const SizedBox(height: AppTheme.spacing16),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: TransactionCategory.values.length,
+                  itemBuilder: (context, index) {
+                    final category = TransactionCategory.values[index];
+                    final isSelected = _selectedCategory == category;
+                    final tempTransaction = Transaction(
+                      id: '',
+                      title: '',
+                      amount: 0,
+                      type: _selectedType,
+                      category: category,
+                      date: DateTime.now(),
+                      accountId: '',
+                    );
+
+                    return ListTile(
+                      leading: Text(
+                        tempTransaction.categoryEmoji,
+                        style: const TextStyle(fontSize: 24),
+                      ),
+                      title: Text(
+                        tempTransaction.categoryName,
+                        style: GoogleFonts.poppins(
+                          color: isSelected
+                              ? AppTheme.accentBlue
+                              : AppTheme.primaryLight,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
+                      ),
+                      trailing: isSelected
+                          ? Icon(Icons.check_circle, color: AppTheme.accentBlue)
+                          : null,
+                      onTap: () {
+                        if (mounted) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) {
+                              setState(() => _selectedCategory = category);
+                            }
+                          });
+                        }
+                        Navigator.pop(context);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -158,7 +395,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
         backgroundColor: AppTheme.primaryDark,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: AppTheme.primaryGold),
+          icon: const Icon(Icons.arrow_back_ios, color: AppTheme.accentBlue),
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
@@ -176,7 +413,15 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                   children: [
                     Expanded(
                       child: GestureDetector(
-                        onTap: () => setState(() => _selectedType = TransactionType.income),
+                        onTap: () {
+                          if (mounted) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted) {
+                                setState(() => _selectedType = TransactionType.income);
+                              }
+                            });
+                          }
+                        },
                         child: Container(
                           padding: const EdgeInsets.all(AppTheme.spacing16),
                           decoration: BoxDecoration(
@@ -221,7 +466,15 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                     const SizedBox(width: AppTheme.spacing12),
                     Expanded(
                       child: GestureDetector(
-                        onTap: () => setState(() => _selectedType = TransactionType.expense),
+                        onTap: () {
+                          if (mounted) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted) {
+                                setState(() => _selectedType = TransactionType.expense);
+                              }
+                            });
+                          }
+                        },
                         child: Container(
                           padding: const EdgeInsets.all(AppTheme.spacing16),
                           decoration: BoxDecoration(
@@ -273,6 +526,90 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
               ),
               const SizedBox(height: AppTheme.spacing16),
 
+              // Account Selection
+              if (_isLoadingAccounts)
+                const Center(child: CircularProgressIndicator())
+              else if (_accounts.isEmpty)
+                PremiumCard(
+                  padding: const EdgeInsets.all(AppTheme.spacing16),
+                  child: Text(
+                    'No accounts available. Please add an account first.',
+                    style: GoogleFonts.poppins(
+                      color: AppTheme.textGray,
+                      fontSize: 14,
+                    ),
+                  ),
+                )
+              else
+                PremiumCard(
+                  padding: EdgeInsets.zero,
+                  child: DropdownButtonFormField<String>(
+                    value: _selectedAccountId,
+                    decoration: InputDecoration(
+                      labelText: 'Account',
+                      labelStyle: GoogleFonts.poppins(
+                        color: AppTheme.textGray,
+                      ),
+                      prefixIcon: Icon(
+                        Icons.account_balance_wallet,
+                        color: AppTheme.accentBlue,
+                      ),
+                      filled: false,
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.all(AppTheme.spacing16),
+                    ),
+                    dropdownColor: AppTheme.surfaceGray,
+                    style: GoogleFonts.poppins(
+                      color: AppTheme.primaryLight,
+                      fontSize: 15,
+                    ),
+                    items: _accounts.map((account) {
+                      return DropdownMenuItem<String>(
+                        value: account.id,
+                        child: Row(
+                          children: [
+                            Icon(
+                              account.type == AccountType.Mpesa
+                                  ? Icons.phone_android
+                                  : account.type == AccountType.Bank
+                                      ? Icons.account_balance
+                                      : Icons.wallet,
+                              color: AppTheme.accentBlue,
+                              size: 20,
+                            ),
+                            const SizedBox(width: AppTheme.spacing8),
+                            Text(account.name),
+                            const Spacer(),
+                            Text(
+                              'KES ${account.balance.toStringAsFixed(2)}',
+                              style: GoogleFonts.poppins(
+                                color: AppTheme.textGray,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      if (mounted) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) {
+                            setState(() => _selectedAccountId = value);
+                          }
+                        });
+                      }
+                    },
+                    validator: (value) {
+                      if (value == null) {
+                        return 'Please select an account';
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+              const SizedBox(height: AppTheme.spacing16),
+
               // Amount Field
               PremiumCard(
                 padding: EdgeInsets.zero,
@@ -316,6 +653,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                     if (double.tryParse(value) == null) {
                       return 'Please enter a valid number';
                     }
+                    if (double.parse(value) <= 0) {
+                      return 'Amount must be greater than 0';
+                    }
                     return null;
                   },
                 ),
@@ -338,7 +678,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                     ),
                     prefixIcon: Icon(
                       Icons.title,
-                      color: AppTheme.primaryGold,
+                      color: AppTheme.accentBlue,
                     ),
                     filled: false,
                     border: InputBorder.none,
@@ -354,88 +694,53 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
               ),
               const SizedBox(height: AppTheme.spacing16),
 
-              // Category Selection
+              // Category Selection (Dropdown Button)
               PremiumCard(
-                padding: const EdgeInsets.all(AppTheme.spacing16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Category',
-                      style: GoogleFonts.poppins(
+                padding: EdgeInsets.zero,
+                child: InkWell(
+                  onTap: _showCategoryDropdown,
+                  child: InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: 'Category',
+                      labelStyle: GoogleFonts.poppins(
                         color: AppTheme.textGray,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
                       ),
-                    ),
-                    const SizedBox(height: AppTheme.spacing12),
-                    Wrap(
-                      spacing: AppTheme.spacing8,
-                      runSpacing: AppTheme.spacing8,
-                      children: TransactionCategory.values.map((category) {
-                        final isSelected = _selectedCategory == category;
-                        final transaction = Transaction(
+                      prefixIcon: Text(
+                        Transaction(
                           id: '',
                           title: '',
                           amount: 0,
-                          type: TransactionType.expense,
-                          category: category,
+                          type: _selectedType,
+                          category: _selectedCategory,
                           date: DateTime.now(),
-                        );
-                        return GestureDetector(
-                          onTap: () => setState(() => _selectedCategory = category),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: AppTheme.spacing12,
-                              vertical: AppTheme.spacing8,
-                            ),
-                            decoration: BoxDecoration(
-                              gradient: isSelected
-                                  ? (_selectedType == TransactionType.income
-                                      ? AppTheme.goldGradient
-                                      : LinearGradient(
-                                          colors: [
-                                            AppTheme.accentRed.withOpacity(0.8),
-                                            AppTheme.accentRed,
-                                          ],
-                                        ))
-                                  : null,
-                              color: isSelected ? null : AppTheme.surfaceGray,
-                              borderRadius: BorderRadius.circular(AppTheme.radius12),
-                              border: Border.all(
-                                color: isSelected
-                                    ? (isSelected ? AppTheme.primaryGold : AppTheme.accentRed)
-                                    : AppTheme.borderGray,
-                                width: 1.5,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  transaction.categoryEmoji,
-                                  style: const TextStyle(fontSize: 18),
-                                ),
-                                const SizedBox(width: AppTheme.spacing8),
-                                Text(
-                                  transaction.categoryName,
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: isSelected
-                                        ? (isSelected
-                                            ? AppTheme.primaryDark
-                                            : Colors.white)
-                                        : AppTheme.primaryLight,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }).toList(),
+                          accountId: '',
+                        ).categoryEmoji,
+                        style: const TextStyle(fontSize: 24),
+                      ),
+                      filled: false,
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.all(AppTheme.spacing16),
+                      suffixIcon: Icon(
+                        Icons.arrow_drop_down,
+                        color: AppTheme.accentBlue,
+                      ),
                     ),
-                  ],
+                    child: Text(
+                      Transaction(
+                        id: '',
+                        title: '',
+                        amount: 0,
+                        type: _selectedType,
+                        category: _selectedCategory,
+                        date: DateTime.now(),
+                        accountId: '',
+                      ).categoryName,
+                      style: GoogleFonts.poppins(
+                        color: AppTheme.primaryLight,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: AppTheme.spacing16),
@@ -473,7 +778,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                           ),
                           Icon(
                             Icons.calendar_today,
-                            color: AppTheme.primaryGold,
+                            color: AppTheme.accentBlue,
                             size: 20,
                           ),
                         ],
@@ -511,7 +816,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                           ),
                           Icon(
                             Icons.access_time,
-                            color: AppTheme.primaryGold,
+                            color: AppTheme.accentBlue,
                             size: 20,
                           ),
                         ],
@@ -541,7 +846,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                       padding: const EdgeInsets.only(bottom: 50),
                       child: Icon(
                         Icons.description_outlined,
-                        color: AppTheme.primaryGold,
+                        color: AppTheme.accentBlue,
                       ),
                     ),
                     filled: false,
@@ -552,8 +857,8 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
               ),
               const SizedBox(height: AppTheme.spacing16),
 
-              // M-Pesa Fields (Optional)
-              if (_selectedCategory == TransactionCategory.mpesa) ...[
+              // M-Pesa Code and Recipient Fields (Optional, shown for transfer category)
+              if (_selectedCategory == TransactionCategory.transfer) ...[
                 PremiumCard(
                   padding: EdgeInsets.zero,
                   child: TextFormField(
@@ -563,13 +868,13 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                       fontSize: 15,
                     ),
                     decoration: InputDecoration(
-                      labelText: 'M-Pesa Code',
+                      labelText: 'M-Pesa Code (Optional)',
                       labelStyle: GoogleFonts.poppins(
                         color: AppTheme.textGray,
                       ),
                       prefixIcon: Icon(
                         Icons.qr_code,
-                        color: AppTheme.primaryGold,
+                        color: AppTheme.accentBlue,
                       ),
                       filled: false,
                       border: InputBorder.none,
@@ -587,13 +892,13 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                       fontSize: 15,
                     ),
                     decoration: InputDecoration(
-                      labelText: 'Recipient',
+                      labelText: 'Recipient (Optional)',
                       labelStyle: GoogleFonts.poppins(
                         color: AppTheme.textGray,
                       ),
                       prefixIcon: Icon(
                         Icons.person_outline,
-                        color: AppTheme.primaryGold,
+                        color: AppTheme.accentBlue,
                       ),
                       filled: false,
                       border: InputBorder.none,
@@ -614,7 +919,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                       children: [
                         Icon(
                           Icons.repeat,
-                          color: AppTheme.primaryGold,
+                          color: AppTheme.accentBlue,
                           size: 24,
                         ),
                         const SizedBox(width: AppTheme.spacing12),
@@ -642,8 +947,16 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                     ),
                     Switch(
                       value: _isRecurring,
-                      onChanged: (value) => setState(() => _isRecurring = value),
-                      activeColor: AppTheme.primaryGold,
+                      onChanged: (value) {
+                        if (mounted) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) {
+                              setState(() => _isRecurring = value);
+                            }
+                          });
+                        }
+                      },
+                      activeColor: AppTheme.accentBlue,
                     ),
                   ],
                 ),
@@ -703,4 +1016,3 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
     );
   }
 }
-
