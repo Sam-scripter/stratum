@@ -7,6 +7,28 @@ import '../../models/transaction/transaction_model.dart';
 import '../../models/account/account_model.dart';
 import '../pattern learning/pattern_learning_service.dart';
 
+
+/// Progress data for SMS scanning
+class SmsReadProgress {
+  final int totalMessages;
+  final int processedMessages;
+  final int transactionsFound;
+  final bool isComplete;
+  final bool hasError;
+  final String status;
+
+  SmsReadProgress({
+    required this.totalMessages,
+    required this.processedMessages,
+    required this.transactionsFound,
+    this.isComplete = false,
+    this.hasError = false,
+    this.status = '',
+  });
+
+  double get progress => totalMessages > 0 ? processedMessages / totalMessages : 0.0;
+}
+
 class SmsReaderService {
   final SmsQuery _query = SmsQuery();
   final BoxManager _boxManager = BoxManager();
@@ -25,93 +47,110 @@ class SmsReaderService {
     return await Permission.sms.isGranted;
   }
 
-  /// Read all SMS messages and parse financial ones
-  /// Returns a stream of progress updates (current/total)
-  Stream<SmsReadProgress> readAllSms() async* {
+  /// Scan all messages with progress updates (Main method for new design)
+  Stream<SmsReadProgress> scanAllMessages() async* {
     try {
       await _boxManager.openAllBoxes(userId);
-      
-      // Get all messages
+
+      // Get all SMS messages
       final List<SmsMessage> messages = await _query.querySms(
         kinds: [SmsQueryKind.inbox],
         count: 10000, // Read up to 10k messages
       );
 
       yield SmsReadProgress(
-        current: 0,
-        total: messages.length,
-        status: 'Reading ${messages.length} messages...',
+        totalMessages: messages.length,
+        processedMessages: 0,
+        transactionsFound: 0,
+        status: 'Starting scan...',
       );
 
-      final List<Transaction> transactions = [];
-      final Set<String> financialSenders = {'MPESA', 'M-PESA', 'SAFARICOM', 'KCB', 'EQUITY', 'COOP', 'CO-OP', 'NCBA', 'STANBIC'};
+      int processedCount = 0;
+      int transactionsFound = 0;
+      final List<Transaction> allTransactions = [];
+      final Set<String> financialSenders = {
+        'MPESA',
+        'M-PESA',
+        'SAFARICOM',
+        'KCB',
+        'EQUITY',
+        'COOP',
+        'CO-OP',
+        'NCBA',
+        'STANBIC'
+      };
 
-      int processed = 0;
+      // Process in batches for better performance
+      const batchSize = 100;
+      for (int i = 0; i < messages.length; i += batchSize) {
+        final batch = messages.skip(i).take(batchSize).toList();
 
-      for (var message in messages) {
-        processed++;
+        for (final message in batch) {
+          // Only process messages from financial institutions
+          final address = message.address?.toUpperCase() ?? '';
+          final isFinancial = financialSenders.any((sender) => address.contains(sender));
 
-        // Only process messages from financial institutions
-        final address = message.address?.toUpperCase() ?? '';
-        final isFinancial = financialSenders.any((sender) => address.contains(sender));
+          if (isFinancial && message.body != null) {
+            final transaction = _parseSmsToTransaction(
+              message.address!,
+              message.body!,
+              message.date ?? DateTime.now(),
+            );
 
-        if (isFinancial && message.body != null) {
-          // Use the parser service to extract transaction
-          final transaction = _parseSmsToTransaction(
-            message.address!,
-            message.body!,
-            message.date ?? DateTime.now(),
-          );
-
-          if (transaction != null) {
-            transactions.add(transaction);
+            if (transaction != null) {
+              allTransactions.add(transaction);
+              transactionsFound++;
+            }
           }
-        }
 
-        // Yield progress every 100 messages
-        if (processed % 100 == 0 || processed == messages.length) {
-          yield SmsReadProgress(
-            current: processed,
-            total: messages.length,
-            status: 'Processed $processed messages...',
-            transactionsFound: transactions.length,
-          );
+          processedCount++;
+
+          // Yield progress update every 50 messages or on last message
+          if (processedCount % 50 == 0 || processedCount == messages.length) {
+            yield SmsReadProgress(
+              totalMessages: messages.length,
+              processedMessages: processedCount,
+              transactionsFound: transactionsFound,
+              status: 'Processing messages...',
+            );
+          }
         }
       }
 
-      // Save all transactions
-      yield SmsReadProgress(
-        current: messages.length,
-        total: messages.length,
-        status: 'Saving ${transactions.length} transactions...',
-        transactionsFound: transactions.length,
-      );
+      // Save all transactions to database
+      if (allTransactions.isNotEmpty) {
+        await _saveTransactions(allTransactions);
+      }
 
-      await _saveTransactions(transactions);
-
+      // Final yield - complete
       yield SmsReadProgress(
-        current: messages.length,
-        total: messages.length,
-        status: 'Complete!',
-        transactionsFound: transactions.length,
+        totalMessages: messages.length,
+        processedMessages: messages.length,
+        transactionsFound: transactionsFound,
         isComplete: true,
+        status: 'Complete!',
       );
-
     } catch (e) {
       yield SmsReadProgress(
-        current: 0,
-        total: 0,
-        status: 'Error: ${e.toString()}',
+        totalMessages: 0,
+        processedMessages: 0,
+        transactionsFound: 0,
         hasError: true,
+        status: 'Error: ${e.toString()}',
       );
+      rethrow;
     }
+  }
+
+  /// Legacy method - kept for backward compatibility
+  Stream<SmsReadProgress> readAllSms() async* {
+    yield* scanAllMessages();
   }
 
   /// Normalize sender address to handle variations (MPESA, M-PESA, SAFARICOM all map to MPESA)
   String _normalizeSenderAddress(String address, String? accountType) {
     final upper = address.toUpperCase().trim();
     if (accountType == 'MPESA') {
-      // All MPESA variations map to the same
       if (upper.contains('MPESA') || upper.contains('M-PESA') || upper.contains('SAFARICOM')) {
         return 'MPESA';
       }
@@ -119,11 +158,10 @@ class SmsReaderService {
     return upper;
   }
 
-  /// Parse SMS to Transaction using the parser service
+  /// Parse SMS to Transaction
   Transaction? _parseSmsToTransaction(String address, String body, DateTime date) {
-    // Use financial_tracker's parser logic
     final normalizedAddress = address.toUpperCase().trim();
-    
+
     String? accountType;
     if (normalizedAddress.contains('MPESA') || normalizedAddress == 'MPESA') {
       accountType = 'MPESA';
@@ -140,44 +178,42 @@ class SmsReaderService {
       BoxManager.accountsBoxName,
       userId,
     );
-    
+
     Account? account;
-    
-    // Normalize sender address for matching (handle variations like MPESA, M-PESA, SAFARICOM)
+
+    // Normalize sender address for matching
     final normalizedSenderAddress = _normalizeSenderAddress(address, accountType);
-    
+
     try {
-      // First, try to find account by normalized sender address (most accurate)
+      // Try to find account by normalized sender address
       account = accountsBox.values.firstWhere(
-        (acc) => _normalizeSenderAddress(acc.senderAddress, accountType) == normalizedSenderAddress,
+            (acc) => _normalizeSenderAddress(acc.senderAddress, accountType) == normalizedSenderAddress,
       );
     } catch (e) {
-      // If not found by address, try by type - but check for duplicates
+      // If not found by address, try by type
       try {
-        final matchingAccounts = accountsBox.values.where(
-          (acc) {
-            if (accountType == 'MPESA') {
-              return acc.type == AccountType.Mpesa;
-            } else {
-              return acc.type == AccountType.Bank && acc.name.toUpperCase().contains(accountType!);
-            }
-          },
-        ).toList();
-        
+        final matchingAccounts = accountsBox.values.where((acc) {
+          if (accountType == 'MPESA') {
+            return acc.type == AccountType.Mpesa;
+          } else {
+            return acc.type == AccountType.Bank && acc.name.toUpperCase().contains(accountType!);
+          }
+        }).toList();
+
         if (matchingAccounts.isNotEmpty) {
-          // Use the first matching account (prefer one with transactions or balance)
           account = matchingAccounts.firstWhere(
-            (acc) => acc.balance > 0,
+                (acc) => acc.balance > 0,
             orElse: () => matchingAccounts.first,
           );
-          // Update sender address if it's different (to consolidate)
+
+          // Update sender address if different
           if (account.senderAddress.toUpperCase() != address.toUpperCase()) {
             final updated = account.copyWith(senderAddress: address);
             accountsBox.put(account.id, updated);
             account = updated;
           }
         } else {
-          // No account found, create new one
+          // Create new account
           final newAccount = Account(
             id: const Uuid().v4(),
             name: accountType == 'MPESA' ? 'M-Pesa' : accountType!,
@@ -189,7 +225,6 @@ class SmsReaderService {
           );
           accountsBox.put(newAccount.id, newAccount);
           account = newAccount;
-          print('📱 Created new account: ${account.name} (ID: ${account.id}, Address: $address)');
         }
       } catch (e2) {
         // Fallback: create new account
@@ -204,47 +239,59 @@ class SmsReaderService {
         );
         accountsBox.put(newAccount.id, newAccount);
         account = newAccount;
-        print('📱 Created new account: ${account.name} (ID: ${account.id}, Address: $address)');
       }
     }
 
-    // Parse using financial_tracker patterns
+    // Parse using patterns
     final transaction = _parseFinancialSms(address, body, date, account.id, accountType);
-    
-    // If transaction has balance, update account immediately
+
+    // Update account balance if transaction has balance
     if (transaction != null && transaction.newBalance != null) {
       final updatedAccount = account.copyWith(
         balance: transaction.newBalance!,
         lastUpdated: transaction.date,
       );
       accountsBox.put(account.id, updatedAccount);
-      print('💰 Updated ${account.name} balance to KES ${transaction.newBalance} from transaction');
     }
-    
+
     return transaction;
   }
 
-  /// Parse financial SMS using financial_tracker patterns
-  Transaction? _parseFinancialSms(String address, String body, DateTime date, String accountId, String accountType) {
+  /// Parse financial SMS using patterns
+  Transaction? _parseFinancialSms(
+      String address,
+      String body,
+      DateTime date,
+      String accountId,
+      String accountType,
+      ) {
     // Check for learned pattern first
     final pattern = PatternLearningService.learnPattern(body, '');
-    final learnedCategory = PatternLearningService.getCategoryForPattern(pattern, accountType, userId);
-    
-    // Use financial_tracker's MPESA patterns
+    final learnedCategory = PatternLearningService.getCategoryForPattern(
+      pattern,
+      accountType,
+      userId,
+    );
+
     if (accountType == 'MPESA') {
       return _parseMpesaSms(body, date, accountId, learnedCategory);
     } else if (accountType == 'KCB') {
       return _parseKcbSms(body, date, accountId, learnedCategory);
     }
-    
+
     return null;
   }
 
-  /// Parse MPESA SMS (from financial_tracker)
-  Transaction? _parseMpesaSms(String body, DateTime date, String accountId, String? learnedCategory) {
+  /// Parse MPESA SMS
+  Transaction? _parseMpesaSms(
+      String body,
+      DateTime date,
+      String accountId,
+      String? learnedCategory,
+      ) {
     const uuid = Uuid();
-    
-    // M-PESA Patterns (from financial_tracker)
+
+    // M-PESA Patterns
     final mpesaSentPattern = RegExp(
       r'([A-Z0-9]+)\s+Confirmed\.\s*Ksh([\d,]+\.\d{2})\s+(?:paid to|sent to)\s+([^.]+?)(?:\s+on\s+[\d/]+\s+at\s+[\d:]+\s+[AP]M)?\.?\s*New M-PESA balance is Ksh([\d,]+\.\d{2})',
       caseSensitive: false,
@@ -265,20 +312,32 @@ class SmsReaderService {
       caseSensitive: false,
     );
 
-    double _parseAmount(String amountStr) {
+    double parseAmount(String amountStr) {
       return double.parse(amountStr.replaceAll(',', ''));
     }
 
-    TransactionCategory _categorizeRecipient(String recipient) {
+    TransactionCategory categorizeRecipient(String recipient) {
       final lower = recipient.toLowerCase();
-      if (lower.contains('safaricom') || lower.contains('airtime')) return TransactionCategory.utilities;
-      if (lower.contains('kplc') || lower.contains('power') || lower.contains('electricity')) return TransactionCategory.utilities;
+      if (lower.contains('safaricom') || lower.contains('airtime')) {
+        return TransactionCategory.utilities;
+      }
+      if (lower.contains('kplc') || lower.contains('power') || lower.contains('electricity')) {
+        return TransactionCategory.utilities;
+      }
       if (lower.contains('water')) return TransactionCategory.utilities;
       if (lower.contains('rent')) return TransactionCategory.other;
-      if (lower.contains('pharmacy') || lower.contains('hospital') || lower.contains('clinic')) return TransactionCategory.health;
-      if (lower.contains('school') || lower.contains('university') || lower.contains('college')) return TransactionCategory.other;
-      if (lower.contains('supermarket') || lower.contains('shop') || lower.contains('store')) return TransactionCategory.shopping;
-      if (lower.contains('restaurant') || lower.contains('cafe') || lower.contains('hotel')) return TransactionCategory.dining;
+      if (lower.contains('pharmacy') || lower.contains('hospital') || lower.contains('clinic')) {
+        return TransactionCategory.health;
+      }
+      if (lower.contains('school') || lower.contains('university') || lower.contains('college')) {
+        return TransactionCategory.other;
+      }
+      if (lower.contains('supermarket') || lower.contains('shop') || lower.contains('store')) {
+        return TransactionCategory.shopping;
+      }
+      if (lower.contains('restaurant') || lower.contains('cafe') || lower.contains('hotel')) {
+        return TransactionCategory.dining;
+      }
       if (lower.contains('agent')) return TransactionCategory.other;
       return TransactionCategory.general;
     }
@@ -287,13 +346,13 @@ class SmsReaderService {
     var match = mpesaSentPattern.firstMatch(body);
     if (match != null) {
       final reference = match.group(1)!;
-      final amount = _parseAmount(match.group(2)!);
+      final amount = parseAmount(match.group(2)!);
       final recipient = match.group(3)!.trim();
-      final balance = _parseAmount(match.group(4)!);
+      final balance = parseAmount(match.group(4)!);
 
       TransactionCategory category = learnedCategory != null
-          ? (PatternLearningService.categoryFromString(learnedCategory) ?? _categorizeRecipient(recipient))
-          : _categorizeRecipient(recipient);
+          ? (PatternLearningService.categoryFromString(learnedCategory) ?? categorizeRecipient(recipient))
+          : categorizeRecipient(recipient);
 
       return Transaction(
         id: uuid.v4(),
@@ -314,9 +373,9 @@ class SmsReaderService {
     match = mpesaReceivedPattern.firstMatch(body);
     if (match != null) {
       final reference = match.group(1)!;
-      final amount = _parseAmount(match.group(2)!);
+      final amount = parseAmount(match.group(2)!);
       final sender = match.group(3)!.trim();
-      final balance = _parseAmount(match.group(4)!);
+      final balance = parseAmount(match.group(4)!);
 
       return Transaction(
         id: uuid.v4(),
@@ -337,9 +396,9 @@ class SmsReaderService {
     match = mpesaWithdrawPattern.firstMatch(body);
     if (match != null) {
       final reference = match.group(1)!;
-      final amount = _parseAmount(match.group(2)!);
+      final amount = parseAmount(match.group(2)!);
       final agent = match.group(3)!.trim();
-      final balance = _parseAmount(match.group(4)!);
+      final balance = parseAmount(match.group(4)!);
 
       return Transaction(
         id: uuid.v4(),
@@ -360,16 +419,18 @@ class SmsReaderService {
     match = mpesaBuyPattern.firstMatch(body);
     if (match != null) {
       final reference = match.group(1)!;
-      final amount = _parseAmount(match.group(2)!);
+      final amount = parseAmount(match.group(2)!);
       final item = match.group(3)!.trim();
-      final balance = _parseAmount(match.group(4)!);
+      final balance = parseAmount(match.group(4)!);
 
       return Transaction(
         id: uuid.v4(),
         title: item,
         amount: amount,
         type: TransactionType.expense,
-        category: item.toLowerCase().contains('airtime') ? TransactionCategory.utilities : TransactionCategory.shopping,
+        category: item.toLowerCase().contains('airtime')
+            ? TransactionCategory.utilities
+            : TransactionCategory.shopping,
         recipient: item,
         originalSms: body,
         newBalance: balance,
@@ -382,11 +443,15 @@ class SmsReaderService {
     return null;
   }
 
-  /// Parse KCB SMS (simplified version)
-  Transaction? _parseKcbSms(String body, DateTime date, String accountId, String? learnedCategory) {
+  /// Parse KCB SMS
+  Transaction? _parseKcbSms(
+      String body,
+      DateTime date,
+      String accountId,
+      String? learnedCategory,
+      ) {
     const uuid = Uuid();
-    
-    // Simple KCB patterns
+
     final kcbBalancePattern = RegExp(
       r'Avail(?:able)?\.?\s*Bal(?:ance)?\s*(?:is|:)?\s*(?:KES|Ksh)\.?\s*([\d,]+\.\d{2})',
       caseSensitive: false,
@@ -398,13 +463,13 @@ class SmsReaderService {
       balance = double.parse(balanceMatch.group(1)!.replaceAll(',', ''));
     }
 
-    // Try to extract amount
+    // Extract amount
     final amountPattern = RegExp(r'(?:KES|Ksh)\.?\s*([\d,]+\.\d{2})', caseSensitive: false);
     final amountMatch = amountPattern.firstMatch(body);
     if (amountMatch == null) return null;
 
     final amount = double.parse(amountMatch.group(1)!.replaceAll(',', ''));
-    
+
     TransactionType type = TransactionType.expense;
     if (body.toLowerCase().contains('credited') || body.toLowerCase().contains('received')) {
       type = TransactionType.income;
@@ -445,35 +510,31 @@ class SmsReaderService {
     for (var transaction in transactions) {
       // Check for duplicates
       final isDuplicate = transactionsBox.values.any((t) =>
-        t.date.millisecondsSinceEpoch == transaction.date.millisecondsSinceEpoch &&
-        t.amount == transaction.amount &&
-        t.accountId == transaction.accountId
-      );
+      t.date.millisecondsSinceEpoch == transaction.date.millisecondsSinceEpoch &&
+          t.amount == transaction.amount &&
+          t.accountId == transaction.accountId);
 
       if (!isDuplicate) {
         transactionsBox.put(transaction.id, transaction);
       }
     }
 
-    // Update account balances - use the most recent transaction's balance for each account
+    // Update account balances
     final Map<String, Transaction> mostRecentByAccount = {};
-    
-    // Group transactions by account ID and find the most recent one for each
+
     for (var transaction in transactionsBox.values) {
       if (transaction.newBalance == null || transaction.accountId.isEmpty) continue;
-      
+
       final existing = mostRecentByAccount[transaction.accountId];
       if (existing == null || transaction.date.isAfter(existing.date)) {
         mostRecentByAccount[transaction.accountId] = transaction;
       }
     }
 
-    // Update balance for each account with the most recent transaction's balance
+    // Update balance for each account
     for (var entry in mostRecentByAccount.entries) {
       try {
-        final account = accountsBox.values.firstWhere(
-          (acc) => acc.id == entry.key,
-        );
+        final account = accountsBox.values.firstWhere((acc) => acc.id == entry.key);
 
         if (entry.value.newBalance != null && entry.value.newBalance! > 0) {
           final updated = account.copyWith(
@@ -481,20 +542,13 @@ class SmsReaderService {
             lastUpdated: entry.value.date,
           );
           accountsBox.put(account.id, updated);
-          print('✅ Updated account ${account.name} (${account.id}) balance to KES ${entry.value.newBalance}');
-        } else {
-          print('⚠️ Transaction for account ${account.name} has no balance or balance is 0');
         }
       } catch (e) {
-        print('⚠️ Account ${entry.key} not found for balance update: $e');
-        // List all accounts for debugging
-        final allAccounts = accountsBox.values.toList();
-        print('Available accounts: ${allAccounts.map((a) => '${a.name} (${a.id})').toList()}');
-        print('Transaction accountId: ${entry.key}');
+        // Account not found, skip
       }
     }
-    
-    // Also recalculate balances from all transactions (fallback)
+
+    // Recalculate balances as fallback
     _recalculateBalancesFromTransactions(accountsBox, transactionsBox);
   }
 
@@ -511,38 +565,31 @@ class SmsReaderService {
 
       // Check for duplicates
       final isDuplicate = transactionsBox.values.any((t) =>
-        t.date.millisecondsSinceEpoch == transaction.date.millisecondsSinceEpoch &&
-        t.amount == transaction.amount &&
-        t.accountId == transaction.accountId
-      );
+      t.date.millisecondsSinceEpoch == transaction.date.millisecondsSinceEpoch &&
+          t.amount == transaction.amount &&
+          t.accountId == transaction.accountId);
 
       if (!isDuplicate) {
         transactionsBox.put(transaction.id, transaction);
-        
+
         // Update account balance
         final accountsBox = _boxManager.getBox<Account>(
           BoxManager.accountsBoxName,
           userId,
         );
-        final account = accountsBox.values.firstWhere(
-          (acc) => acc.id == transaction.accountId,
-          orElse: () => Account(
-            id: transaction.accountId,
-            name: '',
-            balance: 0,
-            type: AccountType.Bank,
-            lastUpdated: DateTime.now(),
-            senderAddress: '',
-            isAutomated: false,
-          ),
-        );
 
-        if (transaction.newBalance != null) {
-          final updated = account.copyWith(
-            balance: transaction.newBalance!,
-            lastUpdated: transaction.date,
-          );
-          accountsBox.put(account.id, updated);
+        try {
+          final account = accountsBox.values.firstWhere((acc) => acc.id == transaction.accountId);
+
+          if (transaction.newBalance != null) {
+            final updated = account.copyWith(
+              balance: transaction.newBalance!,
+              lastUpdated: transaction.date,
+            );
+            accountsBox.put(account.id, updated);
+          }
+        } catch (e) {
+          // Account not found
         }
       }
 
@@ -552,37 +599,32 @@ class SmsReaderService {
     return null;
   }
 
-  /// Recalculate account balances from all transactions (fallback method)
+  /// Recalculate account balances from all transactions
   void _recalculateBalancesFromTransactions(
-    Box<Account> accountsBox,
-    Box<Transaction> transactionsBox,
-  ) {
-    // Group transactions by account and find most recent with balance
+      Box<Account> accountsBox,
+      Box<Transaction> transactionsBox,
+      ) {
     final Map<String, Transaction> latestWithBalance = {};
-    
+
     for (var transaction in transactionsBox.values) {
       if (transaction.newBalance == null || transaction.newBalance! <= 0) continue;
-      
+
       final existing = latestWithBalance[transaction.accountId];
       if (existing == null || transaction.date.isAfter(existing.date)) {
         latestWithBalance[transaction.accountId] = transaction;
       }
     }
-    
-    // Update all accounts
+
     for (var entry in latestWithBalance.entries) {
       try {
-        final account = accountsBox.values.firstWhere(
-          (acc) => acc.id == entry.key,
-        );
-        
+        final account = accountsBox.values.firstWhere((acc) => acc.id == entry.key);
+
         if (entry.value.newBalance != null) {
           final updated = account.copyWith(
             balance: entry.value.newBalance!,
             lastUpdated: entry.value.date,
           );
           accountsBox.put(account.id, updated);
-          print('🔄 Recalculated ${account.name} balance to KES ${entry.value.newBalance}');
         }
       } catch (e) {
         // Account not found, skip
@@ -590,24 +632,3 @@ class SmsReaderService {
     }
   }
 }
-
-class SmsReadProgress {
-  final int current;
-  final int total;
-  final String status;
-  final int transactionsFound;
-  final bool isComplete;
-  final bool hasError;
-
-  SmsReadProgress({
-    required this.current,
-    required this.total,
-    required this.status,
-    this.transactionsFound = 0,
-    this.isComplete = false,
-    this.hasError = false,
-  });
-
-  double get progress => total > 0 ? current / total : 0.0;
-}
-

@@ -9,6 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../onboarding/sms_scanning_screen.dart';
 import '../../theme/app_theme.dart';
 import '../../main.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -42,23 +43,19 @@ class _LoginScreenState extends State<LoginScreen> {
         );
 
         if (user != null && mounted) {
-          // Check if onboarding is complete
-          final boxManager = BoxManager();
-          await boxManager.openAllBoxes(user.uid);
-          final settingsBox = boxManager.getBox<AppSettings>(
-            BoxManager.settingsBoxName,
-            user.uid,
-          );
-          final appSettings = settingsBox.get(user.uid) ?? AppSettings();
-          final hasCompletedOnboarding = appSettings.initialScanComplete;
-          
-          if (hasCompletedOnboarding) {
+          // Check if SMS onboarding has been completed (app-wide)
+          final prefs = await SharedPreferences.getInstance();
+          final hasCompletedSmsOnboarding =
+              prefs.getBool('hasCompletedSmsOnboarding') ?? false;
+          print(hasCompletedSmsOnboarding);
+
+          if (hasCompletedSmsOnboarding) {
+            print("SMS ONBOARDING HAS BEEN COMPLETED NAVIGATING TO MAIN SCREEN");
             Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (context) => const MainScreen(),
-              ),
+              MaterialPageRoute(builder: (context) => const MainScreen()),
             );
           } else {
+            print("SMS ONBOARDING HAS NOT BEEN COMPLETED NAVIGATING TO SMS SCANNING SCREEN");
             // Show SMS scanning screen for first-time users
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(
@@ -66,7 +63,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             );
           }
-          
+
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: const Text('Welcome back!'),
@@ -105,11 +102,28 @@ class _LoginScreenState extends State<LoginScreen> {
       final user = await _authService.signInWithGoogle();
 
       if (user != null && mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => const MainScreen(),
-          ),
-        );
+        // Check if SMS onboarding has been completed (app-wide)
+        final prefs = await SharedPreferences.getInstance();
+        final hasCompletedSmsOnboarding =
+            prefs.getBool('hasCompletedSmsOnboarding') ?? false;
+        print(hasCompletedSmsOnboarding);
+
+
+        if (hasCompletedSmsOnboarding) {
+          print("SMS ONBOARDING HAS BEEN COMPLETED NAVIGATING TO MAIN SCREEN");
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (context) => const MainScreen()),
+          );
+        } else {
+          print("SMS ONBOARDING HAS NOT BEEN COMPLETED NAVIGATING TO SMS SCANNING SCREEN");
+          // Show SMS scanning screen for first-time users
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => const SmsScanningScreen(),
+            ),
+          );
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('Welcome!'),
@@ -205,10 +219,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextFormField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
-                  style: GoogleFonts.poppins(
-                    color: Colors.white,
-                    fontSize: 15,
-                  ),
+                  style: GoogleFonts.poppins(color: Colors.white, fontSize: 15),
                   decoration: InputDecoration(
                     labelText: 'Email',
                     labelStyle: GoogleFonts.poppins(
@@ -238,10 +249,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextFormField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
-                  style: GoogleFonts.poppins(
-                    color: Colors.white,
-                    fontSize: 15,
-                  ),
+                  style: GoogleFonts.poppins(color: Colors.white, fontSize: 15),
                   decoration: InputDecoration(
                     labelText: 'Password',
                     labelStyle: GoogleFonts.poppins(
@@ -364,9 +372,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   decoration: BoxDecoration(
                     color: const Color(0xFF1A2332),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.1),
-                    ),
+                    border: Border.all(color: Colors.white.withOpacity(0.1)),
                   ),
                   child: GestureDetector(
                     onTap: _isLoading ? null : _handleGoogleLogin,
@@ -437,4 +443,3 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
-

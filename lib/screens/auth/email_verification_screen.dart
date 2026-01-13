@@ -2,9 +2,11 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/auth/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../main.dart';
+import '../onboarding/sms_scanning_screen.dart';
 
 class EmailVerificationScreen extends StatefulWidget {
   final String email;
@@ -140,13 +142,30 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen>
     if (!mounted) return;
     
     _checkTimer?.cancel();
-    
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (context) => const MainScreen()),
-      (Route<dynamic> route) => false,
-    );
-    
+
+    // Check if SMS onboarding has been completed (app-wide)
+    final prefs = await SharedPreferences.getInstance();
+    final hasCompletedSmsOnboarding =
+        prefs.getBool('hasCompletedSmsOnboarding') ?? false;
+    print(hasCompletedSmsOnboarding);
+
+    if (hasCompletedSmsOnboarding) {
+      print("SMS ONBOARDING HAS BEEN COMPLETED NAVIGATING TO MAIN SCREEN");
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const MainScreen()),
+            (Route<dynamic> route) => false,
+      );
+    } else {
+      print("SMS ONBOARDING HAS NOT BEEN COMPLETED NAVIGATING TO SMS SCANNING SCREEN");
+      // Show SMS scanning screen for first-time users
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => SmsScanningScreen()),
+            (Route<dynamic> route) => false,
+      );
+    }
+
     _showSnackBar(
       'Email verified successfully! Welcome to Stratum!',
       isError: false,

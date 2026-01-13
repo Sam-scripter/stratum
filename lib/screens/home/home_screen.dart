@@ -114,11 +114,16 @@ class _HomeScreenState extends State<HomeScreen> {
         } else {
           // If duplicate found, keep the one with higher balance or more transactions
           final existing = uniqueAccounts[key]!;
-          final existingTxCount = allTransactions.where((t) => t.accountId == existing.id).length;
-          final currentTxCount = allTransactions.where((t) => t.accountId == account.id).length;
-          
-          if (account.balance > existing.balance || 
-              (account.balance == existing.balance && currentTxCount > existingTxCount)) {
+          final existingTxCount = allTransactions
+              .where((t) => t.accountId == existing.id)
+              .length;
+          final currentTxCount = allTransactions
+              .where((t) => t.accountId == account.id)
+              .length;
+
+          if (account.balance > existing.balance ||
+              (account.balance == existing.balance &&
+                  currentTxCount > existingTxCount)) {
             uniqueAccounts[key] = account;
           }
         }
@@ -164,7 +169,7 @@ class _HomeScreenState extends State<HomeScreen> {
             );
             final allAccounts = accountsBox.values.toList();
             final allTransactions = transactionsBox.values.toList();
-            
+
             // Deduplicate accounts
             final Map<String, Account> uniqueAccounts = {};
             for (var account in allAccounts) {
@@ -173,16 +178,21 @@ class _HomeScreenState extends State<HomeScreen> {
                 uniqueAccounts[key] = account;
               } else {
                 final existing = uniqueAccounts[key]!;
-                final existingTxCount = allTransactions.where((t) => t.accountId == existing.id).length;
-                final currentTxCount = allTransactions.where((t) => t.accountId == account.id).length;
-                
-                if (account.balance > existing.balance || 
-                    (account.balance == existing.balance && currentTxCount > existingTxCount)) {
+                final existingTxCount = allTransactions
+                    .where((t) => t.accountId == existing.id)
+                    .length;
+                final currentTxCount = allTransactions
+                    .where((t) => t.accountId == account.id)
+                    .length;
+
+                if (account.balance > existing.balance ||
+                    (account.balance == existing.balance &&
+                        currentTxCount > existingTxCount)) {
                   uniqueAccounts[key] = account;
                 }
               }
             }
-            
+
             setState(() {
               _accounts = uniqueAccounts.values.toList();
             });
@@ -234,7 +244,7 @@ class _HomeScreenState extends State<HomeScreen> {
               );
               final allAccounts = accountsBox.values.toList();
               final allTransactions = transactionsBox.values.toList();
-              
+
               // Deduplicate accounts
               final Map<String, Account> uniqueAccounts = {};
               for (var account in allAccounts) {
@@ -243,16 +253,21 @@ class _HomeScreenState extends State<HomeScreen> {
                   uniqueAccounts[key] = account;
                 } else {
                   final existing = uniqueAccounts[key]!;
-                  final existingTxCount = allTransactions.where((t) => t.accountId == existing.id).length;
-                  final currentTxCount = allTransactions.where((t) => t.accountId == account.id).length;
-                  
-                  if (account.balance > existing.balance || 
-                      (account.balance == existing.balance && currentTxCount > existingTxCount)) {
+                  final existingTxCount = allTransactions
+                      .where((t) => t.accountId == existing.id)
+                      .length;
+                  final currentTxCount = allTransactions
+                      .where((t) => t.accountId == account.id)
+                      .length;
+
+                  if (account.balance > existing.balance ||
+                      (account.balance == existing.balance &&
+                          currentTxCount > existingTxCount)) {
                     uniqueAccounts[key] = account;
                   }
                 }
               }
-              
+
               setState(() {
                 _accounts = uniqueAccounts.values.toList();
               });
@@ -274,7 +289,7 @@ class _HomeScreenState extends State<HomeScreen> {
       try {
         await for (var progress in _smsReaderService.readAllSms()) {
           // Update UI periodically
-          if (progress.current % 500 == 0 && mounted) {
+          if (progress.processedMessages % 500 == 0 && mounted) {
             final accountsBox = _boxManager.getBox<Account>(
               BoxManager.accountsBoxName,
               _userId,
@@ -285,7 +300,7 @@ class _HomeScreenState extends State<HomeScreen> {
             );
             final allAccounts = accountsBox.values.toList();
             final allTransactions = transactionsBox.values.toList();
-            
+
             // Deduplicate accounts
             final Map<String, Account> uniqueAccounts = {};
             for (var account in allAccounts) {
@@ -294,16 +309,21 @@ class _HomeScreenState extends State<HomeScreen> {
                 uniqueAccounts[key] = account;
               } else {
                 final existing = uniqueAccounts[key]!;
-                final existingTxCount = allTransactions.where((t) => t.accountId == existing.id).length;
-                final currentTxCount = allTransactions.where((t) => t.accountId == account.id).length;
-                
-                if (account.balance > existing.balance || 
-                    (account.balance == existing.balance && currentTxCount > existingTxCount)) {
+                final existingTxCount = allTransactions
+                    .where((t) => t.accountId == existing.id)
+                    .length;
+                final currentTxCount = allTransactions
+                    .where((t) => t.accountId == account.id)
+                    .length;
+
+                if (account.balance > existing.balance ||
+                    (account.balance == existing.balance &&
+                        currentTxCount > existingTxCount)) {
                   uniqueAccounts[key] = account;
                 }
               }
             }
-            
+
             setState(() {
               _accounts = uniqueAccounts.values.toList();
             });
@@ -335,11 +355,16 @@ class _HomeScreenState extends State<HomeScreen> {
               uniqueAccounts[key] = account;
             } else {
               final existing = uniqueAccounts[key]!;
-              final existingTxCount = allTransactions.where((t) => t.accountId == existing.id).length;
-              final currentTxCount = allTransactions.where((t) => t.accountId == account.id).length;
-              
-              if (account.balance > existing.balance || 
-                  (account.balance == existing.balance && currentTxCount > existingTxCount)) {
+              final existingTxCount = allTransactions
+                  .where((t) => t.accountId == existing.id)
+                  .length;
+              final currentTxCount = allTransactions
+                  .where((t) => t.accountId == account.id)
+                  .length;
+
+              if (account.balance > existing.balance ||
+                  (account.balance == existing.balance &&
+                      currentTxCount > existingTxCount)) {
                 uniqueAccounts[key] = account;
               }
             }
@@ -381,8 +406,12 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         setState(() {
-          _summary = _financialService.getFinancialSummary(period: _selectedPeriod);
-          _recentTransactions = _financialService.getRecentTransactions(limit: 8);
+          _summary = _financialService.getFinancialSummary(
+            period: _selectedPeriod,
+          );
+          _recentTransactions = _financialService.getRecentTransactions(
+            limit: 8,
+          );
         });
       }
     });
@@ -393,8 +422,8 @@ class _HomeScreenState extends State<HomeScreen> {
     // Normalize sender address for MPESA variations
     final normalizedAddress = account.senderAddress.toUpperCase();
     if (account.type == AccountType.Mpesa) {
-      if (normalizedAddress.contains('MPESA') || 
-          normalizedAddress.contains('M-PESA') || 
+      if (normalizedAddress.contains('MPESA') ||
+          normalizedAddress.contains('M-PESA') ||
           normalizedAddress.contains('SAFARICOM')) {
         return 'MPESA';
       }
@@ -464,66 +493,79 @@ class _HomeScreenState extends State<HomeScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     ...TimePeriod.values.map((period) {
-              final hasData = _financialService.hasDataForPeriod(period);
-              final isSelected = _selectedPeriod == period;
+                      final hasData = _financialService.hasDataForPeriod(
+                        period,
+                      );
+                      final isSelected = _selectedPeriod == period;
 
-              return ListTile(
-                title: Text(
-                  period.displayName,
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    color: hasData ? Colors.white : Colors.white38,
-                    fontWeight: isSelected
-                        ? FontWeight.w600
-                        : FontWeight.normal,
-                  ),
-                ),
-                trailing: isSelected
-                    ? Icon(Icons.check, color: AppTheme.primaryGold, size: 20)
-                    : null,
-                enabled: hasData,
-                onTap: hasData
-                    ? () {
-                        setState(() {
-                          _selectedPeriod = period;
-                          _summary = _financialService.getFinancialSummary(
-                            period: period,
-                          );
-                        });
-                        Navigator.pop(context);
-                      }
-                    : null,
-              );
-            }),
-            const SizedBox(height: 8),
-            // Info message explaining progressive periods
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                children: [
-                  Icon(Icons.info_outline, size: 16, color: Colors.white38),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      TimePeriod.values.any(
-                            (p) => !_financialService.hasDataForPeriod(p),
-                          )
-                          ? 'Periods unlock as you use the app. Start with "Today" and more options will become available over time.'
-                          : 'All periods are now available. Data is tracked from when you first installed the app.',
-                      style: GoogleFonts.poppins(
-                        fontSize: 11,
-                        color: Colors.white38,
+                      return ListTile(
+                        title: Text(
+                          period.displayName,
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            color: hasData ? Colors.white : Colors.white38,
+                            fontWeight: isSelected
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                          ),
+                        ),
+                        trailing: isSelected
+                            ? Icon(
+                                Icons.check,
+                                color: AppTheme.primaryGold,
+                                size: 20,
+                              )
+                            : null,
+                        enabled: hasData,
+                        onTap: hasData
+                            ? () {
+                                setState(() {
+                                  _selectedPeriod = period;
+                                  _summary = _financialService
+                                      .getFinancialSummary(period: period);
+                                });
+                                Navigator.pop(context);
+                              }
+                            : null,
+                      );
+                    }),
+                    const SizedBox(height: 8),
+                    // Info message explaining progressive periods
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            size: 16,
+                            color: Colors.white38,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              TimePeriod.values.any(
+                                    (p) =>
+                                        !_financialService.hasDataForPeriod(p),
+                                  )
+                                  ? 'Periods unlock as you use the app. Start with "Today" and more options will become available over time.'
+                                  : 'All periods are now available. Data is tracked from when you first installed the app.',
+                              style: GoogleFonts.poppins(
+                                fontSize: 11,
+                                color: Colors.white38,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ],
         ),
       ),
-            )]
-    ),),);
+    );
   }
 
   // Fetch historical data for a specific period (This Month, Last Month, This Year)
@@ -1598,50 +1640,47 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             child: Column(
               children: [
-                ..._recentTransactions
-                    .take(10)
-                    .toList()
-                    .asMap()
-                    .entries
-                    .map(
-                      (entry) {
-                        final index = entry.key;
-                        final transaction = entry.value;
-                        final transactionsList = _recentTransactions.take(10).toList();
-                        final isLast = index == transactionsList.length - 1;
-                        return Column(
-                          children: [
-                            _buildTransactionItem(
-                              transaction.title,
-                              transaction.categoryName,
-                              transaction.amount,
-                              transaction.categoryEmoji,
-                              transaction.type == TransactionType.income
-                                  ? AppTheme.accentGreen
-                                  : AppTheme.accentRed,
-                              transaction.type == TransactionType.income,
-                              () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        TransactionDetailScreen(transaction: transaction),
-                                  ),
-                                );
-                              },
-                            ),
-                            if (!isLast)
-                              Divider(
-                                height: 1,
-                                thickness: 1,
-                                color: Colors.white.withOpacity(0.05),
-                                indent: 16,
-                                endIndent: 16,
+                ..._recentTransactions.take(10).toList().asMap().entries.map((
+                  entry,
+                ) {
+                  final index = entry.key;
+                  final transaction = entry.value;
+                  final transactionsList = _recentTransactions
+                      .take(10)
+                      .toList();
+                  final isLast = index == transactionsList.length - 1;
+                  return Column(
+                    children: [
+                      _buildTransactionItem(
+                        transaction.title,
+                        transaction.categoryName,
+                        transaction.amount,
+                        transaction.categoryEmoji,
+                        transaction.type == TransactionType.income
+                            ? AppTheme.accentGreen
+                            : AppTheme.accentRed,
+                        transaction.type == TransactionType.income,
+                        () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => TransactionDetailScreen(
+                                transaction: transaction,
                               ),
-                          ],
-                        );
-                      },
-                    )
-                    .toList(),
+                            ),
+                          );
+                        },
+                      ),
+                      if (!isLast)
+                        Divider(
+                          height: 1,
+                          thickness: 1,
+                          color: Colors.white.withOpacity(0.05),
+                          indent: 16,
+                          endIndent: 16,
+                        ),
+                    ],
+                  );
+                }).toList(),
               ],
             ),
           ),

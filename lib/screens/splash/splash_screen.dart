@@ -3,7 +3,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:stratum/services/auth/auth_service.dart';
 import '../auth/login_screen.dart';
 import '../onboarding/welcome_screen.dart';
+import '../onboarding/sms_scanning_screen.dart';
 import '../../main.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({Key? key}) : super(key: key);
@@ -26,40 +28,48 @@ class _SplashScreenState extends State<SplashScreen>
       duration: const Duration(milliseconds: 2000),
     );
 
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: const Interval(0.0, 0.6, curve: Curves.easeIn),
-    ));
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: const Interval(0.0, 0.6, curve: Curves.easeIn),
+      ),
+    );
 
-    _scaleAnimation = Tween<double>(
-      begin: 0.8,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: const Interval(0.2, 0.8, curve: Curves.easeOutCubic),
-    ));
+    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: const Interval(0.2, 0.8, curve: Curves.easeOutCubic),
+      ),
+    );
 
     _animationController.forward();
 
     // Check auth status and navigate after animation completes
-    Future.delayed(const Duration(seconds: 3), () {
+    Future.delayed(const Duration(seconds: 3), () async {
       if (mounted) {
         final authService = AuthService();
         if (authService.isSignedIn) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (context) => const MainScreen(),
-            ),
-          );
+          // Check if SMS onboarding has been completed
+          final prefs = await SharedPreferences.getInstance();
+          final hasCompletedSmsOnboarding =
+              prefs.getBool('hasCompletedSmsOnboarding') ?? false;
+
+          if (hasCompletedSmsOnboarding) {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (context) => const MainScreen()),
+            );
+          } else {
+            // Show SMS scanning screen for users who haven't completed onboarding
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (context) => const SmsScanningScreen(),
+              ),
+            );
+          }
         } else {
           // Show onboarding before login
           Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (context) => const WelcomeScreen(),
-            ),
+            MaterialPageRoute(builder: (context) => const WelcomeScreen()),
           );
         }
       }
@@ -163,4 +173,3 @@ class _SplashScreenState extends State<SplashScreen>
     );
   }
 }
-
