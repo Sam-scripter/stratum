@@ -11,10 +11,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 class AccountDetailScreen extends StatefulWidget {
   final Account account;
 
-  const AccountDetailScreen({
-    Key? key,
-    required this.account,
-  }) : super(key: key);
+  const AccountDetailScreen({Key? key, required this.account})
+    : super(key: key);
 
   @override
   State<AccountDetailScreen> createState() => _AccountDetailScreenState();
@@ -24,6 +22,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
   late BoxManager _boxManager;
   late String _userId;
   List<Transaction> _transactions = [];
+  Map<String, List<Transaction>> _groupedTransactions = {};
   bool _isLoading = true;
 
   @override
@@ -44,26 +43,86 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
 
     // Filter transactions for this account
     final allTransactions = transactionsBox.values.toList();
-    print('Account Detail: Loading transactions for account ${widget.account.name} (ID: ${widget.account.id})');
+    print(
+      'Account Detail: Loading transactions for account ${widget.account.name} (ID: ${widget.account.id})',
+    );
     print('Total transactions in box: ${allTransactions.length}');
-    
+
     _transactions = allTransactions
         .where((t) => t.accountId == widget.account.id)
         .toList();
-    
-    print('Filtered transactions for ${widget.account.name}: ${_transactions.length}');
+
+    print(
+      'Filtered transactions for ${widget.account.name}: ${_transactions.length}',
+    );
     if (_transactions.isEmpty && allTransactions.isNotEmpty) {
       // Debug: Check what account IDs exist
       final accountIds = allTransactions.map((t) => t.accountId).toSet();
       print('Available account IDs in transactions: $accountIds');
+
+      // Debug: Check account details
+      final accountsBox = _boxManager.getBox<Account>(
+        BoxManager.accountsBoxName,
+        _userId,
+      );
+      final allAccounts = accountsBox.values.toList();
+      print(
+        'All accounts: ${allAccounts.map((a) => '${a.name} (${a.id}) - sender: ${a.senderAddress}').toList()}',
+      );
+
+      // Check if there are transactions with this account's sender address
+      final transactionsWithMatchingSender = allTransactions.where((t) {
+        final account = allAccounts.firstWhere(
+          (a) => a.id == t.accountId,
+          orElse: () => Account(
+            id: '',
+            name: '',
+            balance: 0,
+            type: AccountType.Bank,
+            lastUpdated: DateTime.now(),
+            senderAddress: '',
+            isAutomated: false,
+          ),
+        );
+        return account.senderAddress.toUpperCase() ==
+            widget.account.senderAddress.toUpperCase();
+      }).toList();
+      print(
+        'Transactions with matching sender address (${widget.account.senderAddress}): ${transactionsWithMatchingSender.length}',
+      );
     }
 
     // Sort by date descending (newest first)
     _transactions.sort((a, b) => b.date.compareTo(a.date));
 
+    // Group transactions by time periods
+    _groupedTransactions.clear();
+    for (var transaction in _transactions) {
+      final key = _getGroupKey(transaction);
+      _groupedTransactions.putIfAbsent(key, () => []).add(transaction);
+    }
+
     setState(() {
       _isLoading = false;
     });
+  }
+
+  String _getGroupKey(Transaction transaction) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final transactionDate = DateTime(
+      transaction.date.year,
+      transaction.date.month,
+      transaction.date.day,
+    );
+    final difference = today.difference(transactionDate).inDays;
+
+    if (difference == 0) return 'Today';
+    if (difference == 1) return 'Yesterday';
+    if (difference <= 7) return 'This Week';
+    if (transactionDate.month == now.month && transactionDate.year == now.year)
+      return 'This Month';
+    return DateFormat('MMM yyyy').format(transaction.date);
   }
 
   @override
@@ -91,7 +150,10 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
               padding: const EdgeInsets.only(right: 16),
               child: Center(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: AppTheme.primaryGold.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(8),
@@ -126,22 +188,20 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
       ),
       body: _isLoading
           ? const Center(
-              child: CircularProgressIndicator(
-                color: AppTheme.primaryGold,
-              ),
+              child: CircularProgressIndicator(color: AppTheme.primaryGold),
             )
           : Column(
               children: [
                 // Balance Card
                 _buildBalanceCard(),
                 const SizedBox(height: 20),
-          // Transactions List
-          Expanded(
-            child: _transactions.isEmpty
-                ? _buildEmptyState()
-                : _buildTransactionsList(),
-          ),
-          const SizedBox(height: 20),
+                // Transactions List
+                Expanded(
+                  child: _transactions.isEmpty
+                      ? _buildEmptyState()
+                      : _buildTransactionsList(),
+                ),
+                const SizedBox(height: 20),
               ],
             ),
     );
@@ -152,8 +212,8 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     final accentColor = isLiability
         ? AppTheme.accentRed
         : (widget.account.type == AccountType.Mpesa
-            ? const Color(0xFF43B02A)
-            : AppTheme.accentBlue);
+              ? const Color(0xFF43B02A)
+              : AppTheme.accentBlue);
 
     // Calculate Income and Expense
     final totalIncome = _transactions
@@ -170,10 +230,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFF1A2332),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: accentColor.withOpacity(0.3),
-          width: 1.5,
-        ),
+        border: Border.all(color: accentColor.withOpacity(0.3), width: 1.5),
         boxShadow: [
           BoxShadow(
             color: accentColor.withOpacity(0.1),
@@ -188,7 +245,10 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: accentColor.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(20),
@@ -211,10 +271,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            'KES ${widget.account.balance.toStringAsFixed(2).replaceAllMapped(
-              RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-              (Match m) => '${m[1]},',
-            )}',
+            'KES ${widget.account.balance.toStringAsFixed(2).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}',
             style: GoogleFonts.poppins(
               fontSize: 32,
               fontWeight: FontWeight.w700,
@@ -317,16 +374,45 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
             ),
           ),
           Expanded(
-            child: ListView.separated(
+            child: ListView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 10),
-              itemCount: _transactions.length,
-              separatorBuilder: (context, index) => const Divider(
-                color: Color(0xFF0A1628),
-                height: 1,
-              ),
+              itemCount: _groupedTransactions.length,
               itemBuilder: (context, index) {
-                final transaction = _transactions[index];
-                return _buildTransactionItem(transaction);
+                final groupKey = _groupedTransactions.keys.elementAt(index);
+                final groupTransactions = _groupedTransactions[groupKey]!;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Group Header
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 8,
+                        horizontal: 10,
+                      ),
+                      child: Text(
+                        '$groupKey (${groupTransactions.length})',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.primaryGold,
+                        ),
+                      ),
+                    ),
+                    // Transactions in this group
+                    ...groupTransactions.map(
+                      (transaction) => Column(
+                        children: [
+                          _buildTransactionItem(transaction),
+                          if (groupTransactions.last != transaction)
+                            const Divider(color: Color(0xFF0A1628), height: 1),
+                        ],
+                      ),
+                    ),
+                    // Divider between groups
+                    if (index < _groupedTransactions.length - 1)
+                      Container(height: 8, color: const Color(0xFF0A1628)),
+                  ],
+                );
               },
             ),
           ),
@@ -344,9 +430,8 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => TransactionDetailScreen(
-              transaction: transaction,
-            ),
+            builder: (context) =>
+                TransactionDetailScreen(transaction: transaction),
           ),
         ).then((result) {
           if (result == true) {
@@ -415,4 +500,3 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     );
   }
 }
-

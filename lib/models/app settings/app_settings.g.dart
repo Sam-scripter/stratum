@@ -22,13 +22,14 @@ class AppSettingsAdapter extends TypeAdapter<AppSettings> {
       appInstallDate: fields[2] as DateTime?,
       completedWeeks: (fields[3] as List).cast<String>(),
       completedMonths: (fields[4] as List).cast<String>(),
+      transactionNotificationsEnabled: fields[5] as bool,
     );
   }
 
   @override
   void write(BinaryWriter writer, AppSettings obj) {
     writer
-      ..writeByte(5)
+      ..writeByte(6)
       ..writeByte(0)
       ..write(obj.lastMpesaSmsTimestamp)
       ..writeByte(1)
@@ -38,7 +39,9 @@ class AppSettingsAdapter extends TypeAdapter<AppSettings> {
       ..writeByte(3)
       ..write(obj.completedWeeks)
       ..writeByte(4)
-      ..write(obj.completedMonths);
+      ..write(obj.completedMonths)
+      ..writeByte(5)
+      ..write(obj.transactionNotificationsEnabled);
   }
 
   @override

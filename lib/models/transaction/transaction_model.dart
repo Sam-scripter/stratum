@@ -40,6 +40,10 @@ enum TransactionCategory {
   manual,
   @HiveField(13)
   general,
+  @HiveField(14)
+  gifts,
+  @HiveField(15)
+  familySupport,
 }
 
 @HiveType(typeId: 1) // Ensure ID is unique
@@ -112,20 +116,73 @@ class Transaction extends HiveObject {
 
   String get categoryEmoji {
     switch (category) {
-      case TransactionCategory.salary: return '💼';
-      case TransactionCategory.freelance: return '💻';
-      case TransactionCategory.utilities: return '⚡';
-      case TransactionCategory.groceries: return '🛒';
-      case TransactionCategory.transport: return '🚗';
-      case TransactionCategory.entertainment: return '🎬';
-      case TransactionCategory.dining: return '🍽️';
-      case TransactionCategory.shopping: return '🛍️';
-      case TransactionCategory.health: return '🏥';
-      case TransactionCategory.investment: return '📈';
-      case TransactionCategory.transfer: return '🔁'; // Fixed
-      case TransactionCategory.manual: return '📝'; // Fixed
-      case TransactionCategory.other: return '📌';
-      case TransactionCategory.general: return '📌';
+      case TransactionCategory.salary:
+        return '💼';
+      case TransactionCategory.freelance:
+        return '💻';
+      case TransactionCategory.utilities:
+        return '⚡';
+      case TransactionCategory.groceries:
+        return '🛒';
+      case TransactionCategory.transport:
+        return '🚗';
+      case TransactionCategory.entertainment:
+        return '🎬';
+      case TransactionCategory.dining:
+        return '🍽️';
+      case TransactionCategory.shopping:
+        return '🛍️';
+      case TransactionCategory.health:
+        return '🏥';
+      case TransactionCategory.investment:
+        return '📈';
+      case TransactionCategory.transfer:
+        return '🔁'; // Fixed
+      case TransactionCategory.manual:
+        return '📝'; // Fixed
+      case TransactionCategory.other:
+        return '📌';
+      case TransactionCategory.general:
+        return '📌';
+      case TransactionCategory.gifts:
+        return '🎁';
+      case TransactionCategory.familySupport:
+        return '👨‍👩‍👧‍👦';
     }
+  }
+
+  // CopyWith method for creating modified copies
+  Transaction copyWith({
+    String? id,
+    String? title,
+    double? amount,
+    TransactionType? type,
+    TransactionCategory? category,
+    DateTime? date,
+    String? description,
+    String? recipient,
+    String? mpesaCode,
+    bool? isRecurring,
+    String? accountId,
+    String? originalSms,
+    double? newBalance,
+    String? reference,
+  }) {
+    return Transaction(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      amount: amount ?? this.amount,
+      type: type ?? this.type,
+      category: category ?? this.category,
+      date: date ?? this.date,
+      description: description ?? this.description,
+      recipient: recipient ?? this.recipient,
+      mpesaCode: mpesaCode ?? this.mpesaCode,
+      isRecurring: isRecurring ?? this.isRecurring,
+      accountId: accountId ?? this.accountId,
+      originalSms: originalSms ?? this.originalSms,
+      newBalance: newBalance ?? this.newBalance,
+      reference: reference ?? this.reference,
+    );
   }
 }

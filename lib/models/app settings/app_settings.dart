@@ -27,12 +27,17 @@ class AppSettings extends HiveObject {
   @HiveField(4)
   final List<String> completedMonths;
 
+  // Notification settings
+  @HiveField(5)
+  final bool transactionNotificationsEnabled;
+
   AppSettings({
     this.lastMpesaSmsTimestamp,
     this.initialScanComplete = false,
     this.appInstallDate,
     this.completedWeeks = const [],
     this.completedMonths = const [],
+    this.transactionNotificationsEnabled = true, // Default to enabled
   });
 
   AppSettings copyWith({
@@ -41,13 +46,18 @@ class AppSettings extends HiveObject {
     DateTime? appInstallDate,
     List<String>? completedWeeks,
     List<String>? completedMonths,
+    bool? transactionNotificationsEnabled,
   }) {
     return AppSettings(
-      lastMpesaSmsTimestamp: lastMpesaSmsTimestamp ?? this.lastMpesaSmsTimestamp,
+      lastMpesaSmsTimestamp:
+          lastMpesaSmsTimestamp ?? this.lastMpesaSmsTimestamp,
       initialScanComplete: initialScanComplete ?? this.initialScanComplete,
       appInstallDate: appInstallDate ?? this.appInstallDate,
       completedWeeks: completedWeeks ?? this.completedWeeks,
       completedMonths: completedMonths ?? this.completedMonths,
+      transactionNotificationsEnabled:
+          transactionNotificationsEnabled ??
+          this.transactionNotificationsEnabled,
     );
   }
 }

@@ -10,13 +10,9 @@ import '../../models/transaction/transaction_model.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../services/background/sms_background_service.dart';
 
-enum ScanningState {
-  requestPermission,
-  scanning,
-  processing,
-  complete,
-}
+enum ScanningState { requestPermission, scanning, processing, complete }
 
 class SmsScanningScreen extends StatefulWidget {
   const SmsScanningScreen({Key? key}) : super(key: key);
@@ -98,9 +94,7 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.surfaceGray,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(
           'Permission Required',
           style: GoogleFonts.poppins(
@@ -110,10 +104,7 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
         ),
         content: Text(
           'Please enable SMS permission in settings to continue.',
-          style: GoogleFonts.poppins(
-            color: AppTheme.textGray,
-            fontSize: 14,
-          ),
+          style: GoogleFonts.poppins(color: AppTheme.textGray, fontSize: 14),
         ),
         actions: [
           TextButton(
@@ -213,6 +204,9 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
         _detectedAccounts = accountCounts;
         _currentState = ScanningState.complete;
       });
+
+      // Start background SMS monitoring
+      await BackgroundSmsService.startMonitoring(_userId);
 
       // Auto-navigate after showing complete state
       await Future.delayed(const Duration(seconds: 2));
@@ -384,7 +378,9 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
   }
 
   Widget _buildScanningProgress() {
-    final progress = _totalMessages > 0 ? _processedMessages / _totalMessages : 0.0;
+    final progress = _totalMessages > 0
+        ? _processedMessages / _totalMessages
+        : 0.0;
 
     return Padding(
       key: const ValueKey('scanning'),
@@ -470,11 +466,7 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
                   height: 40,
                   color: AppTheme.textGray.withOpacity(0.2),
                 ),
-                _buildStat(
-                  'Found',
-                  '$_transactionsFound',
-                  Icons.receipt_long,
-                ),
+                _buildStat('Found', '$_transactionsFound', Icons.receipt_long),
               ],
             ),
           ),
@@ -483,10 +475,7 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
 
           Text(
             'This may take a moment...',
-            style: GoogleFonts.poppins(
-              fontSize: 13,
-              color: AppTheme.textGray,
-            ),
+            style: GoogleFonts.poppins(fontSize: 13, color: AppTheme.textGray),
           ),
         ],
       ),
@@ -540,10 +529,7 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
           Text(
             'Categorizing and organizing your data...',
             textAlign: TextAlign.center,
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              color: AppTheme.textGray,
-            ),
+            style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textGray),
           ),
 
           const SizedBox(height: 40),
@@ -553,9 +539,7 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
             height: 40,
             child: CircularProgressIndicator(
               strokeWidth: 3,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                AppTheme.accentGreen,
-              ),
+              valueColor: AlwaysStoppedAnimation<Color>(AppTheme.accentGreen),
             ),
           ),
         ],
@@ -610,10 +594,7 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
 
           Text(
             'Found $_transactionsFound transactions',
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              color: AppTheme.textGray,
-            ),
+            style: GoogleFonts.poppins(fontSize: 16, color: AppTheme.textGray),
           ),
 
           if (_detectedAccounts.isNotEmpty) ...[
@@ -661,9 +642,7 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
             height: 40,
             child: CircularProgressIndicator(
               strokeWidth: 3,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                AppTheme.accentGreen,
-              ),
+              valueColor: AlwaysStoppedAnimation<Color>(AppTheme.accentGreen),
             ),
           ),
 
@@ -671,10 +650,7 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
 
           Text(
             'Taking you to your dashboard...',
-            style: GoogleFonts.poppins(
-              fontSize: 13,
-              color: AppTheme.textGray,
-            ),
+            style: GoogleFonts.poppins(fontSize: 13, color: AppTheme.textGray),
           ),
         ],
       ),
@@ -695,10 +671,7 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
         const SizedBox(height: 8),
         Text(
           label,
-          style: GoogleFonts.poppins(
-            fontSize: 12,
-            color: AppTheme.textGray,
-          ),
+          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textGray),
         ),
       ],
     );
@@ -719,10 +692,7 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
         ),
         Text(
           label,
-          style: GoogleFonts.poppins(
-            fontSize: 12,
-            color: AppTheme.textGray,
-          ),
+          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textGray),
         ),
       ],
     );

@@ -1,16 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_widgets.dart';
+import '../../models/box_manager.dart';
+import '../../models/app settings/app_settings.dart';
 
 class NotificationSettingsScreen extends StatefulWidget {
   const NotificationSettingsScreen({Key? key}) : super(key: key);
 
   @override
-  State<NotificationSettingsScreen> createState() => _NotificationSettingsScreenState();
+  State<NotificationSettingsScreen> createState() =>
+      _NotificationSettingsScreenState();
 }
 
-class _NotificationSettingsScreenState extends State<NotificationSettingsScreen> {
+class _NotificationSettingsScreenState
+    extends State<NotificationSettingsScreen> {
+  late BoxManager _boxManager;
+  late String _userId;
+  AppSettings? _appSettings;
+
   bool _pushNotifications = true;
   bool _emailNotifications = false;
   bool _transactionAlerts = true;
@@ -20,7 +29,51 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
   bool _paymentReminders = true;
   bool _marketingEmails = false;
 
-  Widget _buildSwitchTile(String title, String subtitle, bool value, ValueChanged<bool> onChanged) {
+  @override
+  void initState() {
+    super.initState();
+    _initializeSettings();
+  }
+
+  Future<void> _initializeSettings() async {
+    final user = FirebaseAuth.instance.currentUser;
+    _userId = user?.uid ?? 'anonymous_user';
+    _boxManager = BoxManager();
+
+    await _boxManager.openAllBoxes(_userId);
+    final settingsBox = _boxManager.getBox<AppSettings>(
+      BoxManager.settingsBoxName,
+      _userId,
+    );
+
+    _appSettings = settingsBox.get('app_settings');
+    if (_appSettings != null) {
+      setState(() {
+        _transactionAlerts = _appSettings!.transactionNotificationsEnabled;
+      });
+    }
+  }
+
+  Future<void> _saveTransactionAlertsSetting(bool value) async {
+    final settingsBox = _boxManager.getBox<AppSettings>(
+      BoxManager.settingsBoxName,
+      _userId,
+    );
+
+    final updatedSettings = (_appSettings ?? AppSettings()).copyWith(
+      transactionNotificationsEnabled: value,
+    );
+
+    await settingsBox.put('app_settings', updatedSettings);
+    _appSettings = updatedSettings;
+  }
+
+  Widget _buildSwitchTile(
+    String title,
+    String subtitle,
+    bool value,
+    ValueChanged<bool> onChanged,
+  ) {
     return Container(
       margin: const EdgeInsets.only(bottom: AppTheme.spacing12),
       child: PremiumCard(
@@ -122,7 +175,10 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
               'Transaction Alerts',
               'Get notified when transactions are added',
               _transactionAlerts,
-              (value) => setState(() => _transactionAlerts = value),
+              (value) {
+                setState(() => _transactionAlerts = value);
+                _saveTransactionAlertsSetting(value);
+              },
             ),
             _buildSwitchTile(
               'Payment Reminders',
@@ -209,4 +265,3 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
     );
   }
 }
-

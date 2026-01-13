@@ -153,6 +153,10 @@ class TransactionCategoryAdapter extends TypeAdapter<TransactionCategory> {
         return TransactionCategory.manual;
       case 13:
         return TransactionCategory.general;
+      case 14:
+        return TransactionCategory.gifts;
+      case 15:
+        return TransactionCategory.familySupport;
       default:
         return TransactionCategory.salary;
     }
@@ -202,6 +206,12 @@ class TransactionCategoryAdapter extends TypeAdapter<TransactionCategory> {
         break;
       case TransactionCategory.general:
         writer.writeByte(13);
+        break;
+      case TransactionCategory.gifts:
+        writer.writeByte(14);
+        break;
+      case TransactionCategory.familySupport:
+        writer.writeByte(15);
         break;
     }
   }

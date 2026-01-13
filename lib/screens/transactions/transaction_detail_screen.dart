@@ -13,34 +13,105 @@ import '../../models/account/account_model.dart';
 class TransactionDetailScreen extends StatefulWidget {
   final Transaction transaction;
 
-  const TransactionDetailScreen({
-    Key? key,
-    required this.transaction,
-  }) : super(key: key);
+  const TransactionDetailScreen({Key? key, required this.transaction})
+    : super(key: key);
 
   @override
-  State<TransactionDetailScreen> createState() => _TransactionDetailScreenState();
+  State<TransactionDetailScreen> createState() =>
+      _TransactionDetailScreenState();
 }
 
 class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
   late Transaction transaction;
   late BoxManager _boxManager;
   late String _userId;
-  
-  final List<TransactionCategory> categories = [
-    TransactionCategory.general,
+
+  final List<TransactionCategory> incomeCategories = [
     TransactionCategory.salary,
     TransactionCategory.freelance,
+    TransactionCategory.investment,
+    TransactionCategory.gifts,
+    TransactionCategory.familySupport,
+  ];
+
+  final List<TransactionCategory> expenseCategories = [
     TransactionCategory.utilities,
     TransactionCategory.groceries,
     TransactionCategory.transport,
     TransactionCategory.entertainment,
     TransactionCategory.dining,
     TransactionCategory.health,
-    TransactionCategory.investment,
     TransactionCategory.shopping,
     TransactionCategory.other,
   ];
+
+  final Map<TransactionCategory, Map<String, dynamic>> categoryInfo = {
+    TransactionCategory.salary: {
+      'icon': Icons.work,
+      'description': 'Regular income from employment or salary payments',
+      'examples': 'Monthly paycheck, bi-weekly salary',
+    },
+    TransactionCategory.freelance: {
+      'icon': Icons.business_center,
+      'description': 'Income from freelance work or project-based payments',
+      'examples': 'Client payments, gig economy earnings',
+    },
+    TransactionCategory.investment: {
+      'icon': Icons.trending_up,
+      'description': 'Returns from investments or financial gains',
+      'examples': 'Dividends, stock sales, interest income',
+    },
+    TransactionCategory.gifts: {
+      'icon': Icons.card_giftcard,
+      'description': 'Money received as gifts from friends or others',
+      'examples': 'Birthday gifts, holiday presents, donations',
+    },
+    TransactionCategory.familySupport: {
+      'icon': Icons.family_restroom,
+      'description': 'Financial support from family members',
+      'examples': 'Parental contributions, allowances, family upkeep',
+    },
+    TransactionCategory.utilities: {
+      'icon': Icons.flash_on,
+      'description': 'Bills for essential services',
+      'examples': 'Electricity, water, internet, phone',
+    },
+    TransactionCategory.groceries: {
+      'icon': Icons.shopping_cart,
+      'description': 'Food and household supplies',
+      'examples': 'Supermarket purchases, fresh produce',
+    },
+    TransactionCategory.transport: {
+      'icon': Icons.directions_car,
+      'description': 'Transportation costs and vehicle expenses',
+      'examples': 'Fuel, public transport, parking, car maintenance',
+    },
+    TransactionCategory.entertainment: {
+      'icon': Icons.movie,
+      'description': 'Leisure and recreational activities',
+      'examples': 'Movies, games, concerts, hobbies',
+    },
+    TransactionCategory.dining: {
+      'icon': Icons.restaurant,
+      'description': 'Food and beverages consumed outside home',
+      'examples': 'Restaurants, cafes, takeout, delivery',
+    },
+    TransactionCategory.health: {
+      'icon': Icons.local_hospital,
+      'description': 'Medical and healthcare expenses',
+      'examples': 'Doctor visits, medications, insurance',
+    },
+    TransactionCategory.shopping: {
+      'icon': Icons.shopping_bag,
+      'description': 'General purchases and consumer goods',
+      'examples': 'Clothing, electronics, personal items',
+    },
+    TransactionCategory.other: {
+      'icon': Icons.category,
+      'description': 'Miscellaneous expenses not covered by other categories',
+      'examples': 'Unexpected costs, one-time purchases',
+    },
+  };
 
   @override
   void initState() {
@@ -79,7 +150,8 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     transactionsBox.put(updated.id, updated);
 
     // Learn this pattern if we have original SMS
-    if (transaction.originalSms != null && transaction.originalSms!.isNotEmpty) {
+    if (transaction.originalSms != null &&
+        transaction.originalSms!.isNotEmpty) {
       final pattern = PatternLearningService.learnPattern(
         transaction.originalSms!,
         PatternLearningService.categoryToString(newCategory),
@@ -257,7 +329,9 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                   ),
                   const SizedBox(height: 5),
                   Text(
-                    DateFormat('EEEE, MMMM dd, yyyy • hh:mm a').format(transaction.date),
+                    DateFormat(
+                      'EEEE, MMMM dd, yyyy • hh:mm a',
+                    ).format(transaction.date),
                     style: GoogleFonts.poppins(
                       fontSize: 12,
                       color: Colors.white70,
@@ -271,11 +345,17 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
 
             // Details
             _buildDetailRow('Account', _getAccountName()),
-            _buildDetailRow('Type', transaction.type == TransactionType.income ? 'Income' : 'Expense'),
+            _buildDetailRow(
+              'Type',
+              transaction.type == TransactionType.income ? 'Income' : 'Expense',
+            ),
             if (transaction.recipient != null)
               _buildDetailRow('Recipient', transaction.recipient!),
             if (transaction.newBalance != null)
-              _buildDetailRow('New Balance', 'KES ${NumberFormat('#,##0.00').format(transaction.newBalance!)}'),
+              _buildDetailRow(
+                'New Balance',
+                'KES ${NumberFormat('#,##0.00').format(transaction.newBalance!)}',
+              ),
             if (transaction.reference != null)
               _buildDetailRow('Reference', transaction.reference!),
 
@@ -291,35 +371,21 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
               ),
             ),
             const SizedBox(height: 15),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: categories.map((cat) {
-                final isSelected = cat == transaction.category;
-                return GestureDetector(
-                  onTap: () => _updateCategory(cat),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? const Color(0xFF667EEA)
-                          : const Color(0xFF1D1E33),
-                      borderRadius: BorderRadius.circular(20),
-                      border: isSelected
-                          ? Border.all(color: Colors.white, width: 2)
-                          : null,
-                    ),
-                    child: Text(
-                      _getCategoryName(cat),
-                      style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
+
+            // Income Categories
+            _buildCategorySection(
+              'Income Categories',
+              incomeCategories,
+              AppTheme.accentGreen,
+            ),
+
+            const SizedBox(height: 20),
+
+            // Expense Categories
+            _buildCategorySection(
+              'Expense Categories',
+              expenseCategories,
+              AppTheme.accentRed,
             ),
 
             const SizedBox(height: 30),
@@ -366,7 +432,8 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
             const SizedBox(height: 30),
 
             // Original SMS
-            if (transaction.originalSms != null && transaction.originalSms!.isNotEmpty) ...[
+            if (transaction.originalSms != null &&
+                transaction.originalSms!.isNotEmpty) ...[
               Text(
                 'Original Message',
                 style: GoogleFonts.poppins(
@@ -409,10 +476,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
           Flexible(
             child: Text(
               label,
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                color: Colors.white60,
-              ),
+              style: GoogleFonts.poppins(fontSize: 14, color: Colors.white60),
             ),
           ),
           const SizedBox(width: 16),
@@ -436,7 +500,96 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
   }
 
   String _getCategoryName(TransactionCategory category) {
-    return category.toString().split('.').last.toUpperCase();
+    switch (category) {
+      case TransactionCategory.familySupport:
+        return 'FAMILY SUPPORT';
+      case TransactionCategory.gifts:
+        return 'GIFTS';
+      default:
+        return category.toString().split('.').last.toUpperCase();
+    }
+  }
+
+  Widget _buildCategorySection(
+    String title,
+    List<TransactionCategory> categories,
+    Color accentColor,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: accentColor,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: categories.map((cat) {
+            final isSelected = cat == transaction.category;
+            final info = categoryInfo[cat]!;
+            return GestureDetector(
+              onTap: () => _updateCategory(cat),
+              child: Container(
+                width: MediaQuery.of(context).size.width * 0.4, // Two per row
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? accentColor.withOpacity(0.2)
+                      : const Color(0xFF1D1E33),
+                  borderRadius: BorderRadius.circular(12),
+                  border: isSelected
+                      ? Border.all(color: accentColor, width: 2)
+                      : null,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          info['icon'],
+                          color: isSelected ? accentColor : Colors.white70,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _getCategoryName(cat),
+                            style: GoogleFonts.poppins(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: isSelected
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      info['description'],
+                      style: GoogleFonts.poppins(
+                        color: Colors.white60,
+                        fontSize: 10,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
   }
 
   String _getAccountName() {

@@ -1,5 +1,6 @@
 // home_screen.dart(stratum app):
 
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -24,6 +25,8 @@ import '../../widgets/sms_processing_dialog.dart';
 import '../../widgets/sms_reading_dialog.dart';
 import '../../models/app settings/app_settings.dart';
 import '../accounts/account_detail_screen.dart';
+import '../onboarding/sms_scanning_screen.dart';
+import 'package:hive/hive.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -54,15 +57,40 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoadingAccounts = true;
   bool _hasSmsPermission = false;
 
+  // Box listeners for real-time updates
+  late Box<Account> _accountsBox;
+  late Box<Transaction> _transactionsBox;
+  StreamSubscription? _accountsSubscription;
+  StreamSubscription? _transactionsSubscription;
+
   @override
   void initState() {
     super.initState();
     _summary = _financialService.getFinancialSummary(period: _selectedPeriod);
     _recentTransactions = _financialService.getRecentTransactions(limit: 8);
-    // 1. Get initial user ID from Firebase Auth
+
+    // Wait for Firebase auth to be ready
+    _initializeWithAuth();
+  }
+
+  Future<void> _initializeWithAuth() async {
+    // Wait for Firebase Auth to initialize
     final user = FirebaseAuth.instance.currentUser;
-    // Default to a temporary ID if auth hasn't fully loaded, though Canvas ensures a token is present
-    _userId = user?.uid ?? 'anonymous_user';
+    if (user == null) {
+      // Listen for auth state changes
+      FirebaseAuth.instance.authStateChanges().listen((User? user) {
+        if (user != null && mounted) {
+          _initializeWithUserId(user.uid);
+        }
+      });
+    } else {
+      _initializeWithUserId(user.uid);
+    }
+  }
+
+  void _initializeWithUserId(String userId) {
+    _userId = userId;
+    print("USER ID IS $_userId (length: ${userId.length})");
 
     // 2. Initialize Services with the obtained user ID
     _syncService = SyncService(_userId);
@@ -74,20 +102,102 @@ class _HomeScreenState extends State<HomeScreen> {
     _financialService.updateCompletedPeriods();
   }
 
-  Future<void> _initializeFinancials() async {
-    // 1. Check and Request Permissions
-    var status = await Permission.sms.status;
+  @override
+  void dispose() {
+    _accountsSubscription?.cancel();
+    _transactionsSubscription?.cancel();
+    super.dispose();
+  }
 
-    // If permission is not granted and not permanently denied, request it
-    if (!status.isGranted && !status.isPermanentlyDenied) {
-      status = await Permission.sms.request();
+  void _setupBoxListeners() {
+    // Set up listeners for real-time updates when background service modifies data
+    _accountsSubscription = _boxManager
+        .getBox<Account>(BoxManager.accountsBoxName, _userId)
+        .watch()
+        .listen((event) {
+          print('Accounts box changed, refreshing UI');
+          _refreshAccountData();
+        });
+
+    _transactionsSubscription = _boxManager
+        .getBox<Transaction>(BoxManager.transactionsBoxName, _userId)
+        .watch()
+        .listen((event) {
+          print('Transactions box changed, refreshing UI');
+          _refreshAccountData();
+        });
+  }
+
+  Future<void> _refreshAccountData() async {
+    if (!mounted) return;
+
+    final accountsBox = _boxManager.getBox<Account>(
+      BoxManager.accountsBoxName,
+      _userId,
+    );
+    final transactionsBox = _boxManager.getBox<Transaction>(
+      BoxManager.transactionsBoxName,
+      _userId,
+    );
+
+    final allAccounts = accountsBox.values.toList();
+    final allTransactions = transactionsBox.values.toList();
+
+    // Apply the same filtering logic as in _initializeFinancials
+    final Map<String, Account> uniqueAccounts = {};
+    for (var account in allAccounts) {
+      final key = _getAccountKey(account);
+      if (!uniqueAccounts.containsKey(key)) {
+        uniqueAccounts[key] = account;
+      } else {
+        final existing = uniqueAccounts[key]!;
+        final existingTxCount = allTransactions
+            .where((t) => t.accountId == existing.id)
+            .length;
+        final currentTxCount = allTransactions
+            .where((t) => t.accountId == account.id)
+            .length;
+
+        if (account.balance > existing.balance ||
+            (account.balance == existing.balance &&
+                currentTxCount > existingTxCount)) {
+          uniqueAccounts[key] = account;
+        }
+      }
     }
 
+    final filteredAccounts = uniqueAccounts.values.where((account) {
+      final hasTransactions = allTransactions.any(
+        (t) => t.accountId == account.id,
+      );
+      if (account.balance == 0 && !hasTransactions) {
+        return false;
+      }
+      return true;
+    }).toList();
+
+    setState(() {
+      _accounts = filteredAccounts;
+    });
+
+    // Also refresh the summary and recent transactions
+    setState(() {
+      _summary = _financialService.getFinancialSummary(period: _selectedPeriod);
+      _recentTransactions = _financialService.getRecentTransactions(limit: 8);
+    });
+  }
+
+  Future<void> _initializeFinancials() async {
+    // 1. Check SMS permission status (but don't request it)
+    final status = await Permission.sms.status;
     setState(() {
       _hasSmsPermission = status.isGranted;
     });
 
     await _boxManager.openAllBoxes(_userId);
+
+    // Set up box listeners now that boxes are open
+    _setupBoxListeners();
 
     // 2. Load existing accounts first (before SMS parsing)
     if (mounted) {
@@ -104,9 +214,19 @@ class _HomeScreenState extends State<HomeScreen> {
       final allAccounts = accountsBox.values.toList();
       final allTransactions = transactionsBox.values.toList();
 
-      // First, deduplicate accounts by type and sender address
+      // Merge duplicate accounts first (this actually consolidates them in the database)
+      await _mergeDuplicateAccounts(allAccounts, allTransactions);
+
+      // Fix account types for existing accounts
+      await _fixAccountTypes(accountsBox);
+
+      // Reload accounts after merging (they may have changed)
+      final accountsAfterMerge = accountsBox.values.toList();
+      final transactionsAfterMerge = transactionsBox.values.toList();
+
+      // Then deduplicate for display
       final Map<String, Account> uniqueAccounts = {};
-      for (var account in allAccounts) {
+      for (var account in accountsAfterMerge) {
         // Create a unique key based on account type and normalized sender address
         final key = _getAccountKey(account);
         if (!uniqueAccounts.containsKey(key)) {
@@ -114,10 +234,10 @@ class _HomeScreenState extends State<HomeScreen> {
         } else {
           // If duplicate found, keep the one with higher balance or more transactions
           final existing = uniqueAccounts[key]!;
-          final existingTxCount = allTransactions
+          final existingTxCount = transactionsAfterMerge
               .where((t) => t.accountId == existing.id)
               .length;
-          final currentTxCount = allTransactions
+          final currentTxCount = transactionsAfterMerge
               .where((t) => t.accountId == account.id)
               .length;
 
@@ -131,7 +251,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final filteredAccounts = uniqueAccounts.values.where((account) {
         // Show account if it has a balance > 0 OR has transactions
-        final hasTransactions = allTransactions.any(
+        final hasTransactions = transactionsAfterMerge.any(
           (t) => t.accountId == account.id,
         );
         // Filter out accounts with 0 balance AND no transactions
@@ -148,15 +268,11 @@ class _HomeScreenState extends State<HomeScreen> {
       _loadTransactionData();
     }
 
-    // 3. If granted, read SMS using financial_tracker approach
-    if (_hasSmsPermission) {
-      await _readSmsMessages();
-    }
-
-    // 4. Sync with Cloud (Merges Firebase data into Hive) - also in background
+    // 3. Sync with Cloud (Merges Firebase data into Hive) - also in background
+    // Note: SMS reading is handled by SMS scanning screen, not here
     _syncService
         .syncAccounts()
-        .then((_) {
+        .then((_) async {
           // Reload accounts after cloud sync
           if (mounted) {
             final accountsBox = _boxManager.getBox<Account>(
@@ -170,18 +286,25 @@ class _HomeScreenState extends State<HomeScreen> {
             final allAccounts = accountsBox.values.toList();
             final allTransactions = transactionsBox.values.toList();
 
-            // Deduplicate accounts
+            // Merge duplicate accounts first
+            await _mergeDuplicateAccounts(allAccounts, allTransactions);
+
+            // Reload after merging
+            final accountsAfterMerge = accountsBox.values.toList();
+            final transactionsAfterMerge = transactionsBox.values.toList();
+
+            // Deduplicate accounts for display
             final Map<String, Account> uniqueAccounts = {};
-            for (var account in allAccounts) {
+            for (var account in accountsAfterMerge) {
               final key = _getAccountKey(account);
               if (!uniqueAccounts.containsKey(key)) {
                 uniqueAccounts[key] = account;
               } else {
                 final existing = uniqueAccounts[key]!;
-                final existingTxCount = allTransactions
+                final existingTxCount = transactionsAfterMerge
                     .where((t) => t.accountId == existing.id)
                     .length;
-                final currentTxCount = allTransactions
+                final currentTxCount = transactionsAfterMerge
                     .where((t) => t.accountId == account.id)
                     .length;
 
@@ -209,195 +332,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // ==============================================================================
 
   /// Read SMS messages using financial_tracker's simple approach
-  Future<void> _readSmsMessages() async {
-    final settingsBox = _boxManager.getBox<AppSettings>(
-      BoxManager.settingsBoxName,
-      _userId,
-    );
-    final appSettings = settingsBox.get(_userId) ?? AppSettings();
-    final isFirstLaunch = appSettings.lastMpesaSmsTimestamp == null;
-
-    if (isFirstLaunch && mounted) {
-      // First time: Show loading dialog
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => SmsReadingDialog(
-          smsReaderService: _smsReaderService,
-          onComplete: () async {
-            // Mark as complete
-            final updated = appSettings.copyWith(
-              lastMpesaSmsTimestamp: DateTime.now().millisecondsSinceEpoch,
-              initialScanComplete: true,
-            );
-            settingsBox.put(_userId, updated);
-
-            // Reload accounts
-            if (mounted) {
-              final accountsBox = _boxManager.getBox<Account>(
-                BoxManager.accountsBoxName,
-                _userId,
-              );
-              final transactionsBox = _boxManager.getBox<Transaction>(
-                BoxManager.transactionsBoxName,
-                _userId,
-              );
-              final allAccounts = accountsBox.values.toList();
-              final allTransactions = transactionsBox.values.toList();
-
-              // Deduplicate accounts
-              final Map<String, Account> uniqueAccounts = {};
-              for (var account in allAccounts) {
-                final key = _getAccountKey(account);
-                if (!uniqueAccounts.containsKey(key)) {
-                  uniqueAccounts[key] = account;
-                } else {
-                  final existing = uniqueAccounts[key]!;
-                  final existingTxCount = allTransactions
-                      .where((t) => t.accountId == existing.id)
-                      .length;
-                  final currentTxCount = allTransactions
-                      .where((t) => t.accountId == account.id)
-                      .length;
-
-                  if (account.balance > existing.balance ||
-                      (account.balance == existing.balance &&
-                          currentTxCount > existingTxCount)) {
-                    uniqueAccounts[key] = account;
-                  }
-                }
-              }
-
-              setState(() {
-                _accounts = uniqueAccounts.values.toList();
-              });
-              _loadTransactionData();
-
-              // Show completion dialog
-              showDialog(
-                context: context,
-                builder: (context) => SmsProcessingCompleteDialog(
-                  detectedAccounts: <String, int>{},
-                ),
-              );
-            }
-          },
-        ),
-      );
-    } else {
-      // Subsequent scans: Read silently
-      try {
-        await for (var progress in _smsReaderService.readAllSms()) {
-          // Update UI periodically
-          if (progress.processedMessages % 500 == 0 && mounted) {
-            final accountsBox = _boxManager.getBox<Account>(
-              BoxManager.accountsBoxName,
-              _userId,
-            );
-            final transactionsBox = _boxManager.getBox<Transaction>(
-              BoxManager.transactionsBoxName,
-              _userId,
-            );
-            final allAccounts = accountsBox.values.toList();
-            final allTransactions = transactionsBox.values.toList();
-
-            // Deduplicate accounts
-            final Map<String, Account> uniqueAccounts = {};
-            for (var account in allAccounts) {
-              final key = _getAccountKey(account);
-              if (!uniqueAccounts.containsKey(key)) {
-                uniqueAccounts[key] = account;
-              } else {
-                final existing = uniqueAccounts[key]!;
-                final existingTxCount = allTransactions
-                    .where((t) => t.accountId == existing.id)
-                    .length;
-                final currentTxCount = allTransactions
-                    .where((t) => t.accountId == account.id)
-                    .length;
-
-                if (account.balance > existing.balance ||
-                    (account.balance == existing.balance &&
-                        currentTxCount > existingTxCount)) {
-                  uniqueAccounts[key] = account;
-                }
-              }
-            }
-
-            setState(() {
-              _accounts = uniqueAccounts.values.toList();
-            });
-            _loadTransactionData();
-          }
-        }
-
-        // Final update - reload everything
-        if (mounted) {
-          await _boxManager.openAllBoxes(_userId);
-          final accountsBox = _boxManager.getBox<Account>(
-            BoxManager.accountsBoxName,
-            _userId,
-          );
-          final transactionsBox = _boxManager.getBox<Transaction>(
-            BoxManager.transactionsBoxName,
-            _userId,
-          );
-
-          // Filter accounts to only show those with actual data
-          final allAccounts = accountsBox.values.toList();
-          final allTransactions = transactionsBox.values.toList();
-
-          // Deduplicate accounts
-          final Map<String, Account> uniqueAccounts = {};
-          for (var account in allAccounts) {
-            final key = _getAccountKey(account);
-            if (!uniqueAccounts.containsKey(key)) {
-              uniqueAccounts[key] = account;
-            } else {
-              final existing = uniqueAccounts[key]!;
-              final existingTxCount = allTransactions
-                  .where((t) => t.accountId == existing.id)
-                  .length;
-              final currentTxCount = allTransactions
-                  .where((t) => t.accountId == account.id)
-                  .length;
-
-              if (account.balance > existing.balance ||
-                  (account.balance == existing.balance &&
-                      currentTxCount > existingTxCount)) {
-                uniqueAccounts[key] = account;
-              }
-            }
-          }
-
-          final filteredAccounts = uniqueAccounts.values.where((account) {
-            final hasTransactions = allTransactions.any(
-              (t) => t.accountId == account.id,
-            );
-            if (account.balance == 0 && !hasTransactions) {
-              return false;
-            }
-            return true;
-          }).toList();
-
-          setState(() {
-            _accounts = filteredAccounts;
-          });
-          _loadTransactionData();
-        }
-      } catch (e) {
-        print('Error reading SMS: $e');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error reading messages: $e'),
-              backgroundColor: AppTheme.accentRed,
-            ),
-          );
-        }
-      }
-    }
-  }
+  // SMS reading removed - handled by SMS scanning screen only
 
   // Helper to reload transaction-based widgets
   void _loadTransactionData() {
@@ -419,17 +354,217 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Helper to create unique key for account deduplication
   String _getAccountKey(Account account) {
-    // Normalize sender address for MPESA variations
-    final normalizedAddress = account.senderAddress.toUpperCase();
-    if (account.type == AccountType.Mpesa) {
-      if (normalizedAddress.contains('MPESA') ||
-          normalizedAddress.contains('M-PESA') ||
-          normalizedAddress.contains('SAFARICOM')) {
-        return 'MPESA';
+    // For MPESA, check by name first (regardless of type) to catch incorrectly typed accounts
+    final normalizedName = account.name.toUpperCase().trim();
+    if (normalizedName == 'MPESA' || 
+        normalizedName == 'M-PESA' ||
+        normalizedName.contains('MPESA') ||
+        normalizedName.contains('M-PESA')) {
+      return 'MPESA';
+    }
+    
+    // For other accounts, use normalized name (not type, to catch type mismatches)
+    return normalizedName;
+  }
+
+  // Merge duplicate accounts and migrate transactions
+  Future<void> _mergeDuplicateAccounts(
+    List<Account> allAccounts,
+    List<Transaction> allTransactions,
+  ) async {
+    // Group accounts by key
+    final Map<String, List<Account>> accountsByKey = {};
+    for (var account in allAccounts) {
+      final key = _getAccountKey(account);
+      if (!accountsByKey.containsKey(key)) {
+        accountsByKey[key] = [];
+      }
+      accountsByKey[key]!.add(account);
+    }
+
+    // Get boxes first - needed throughout the merge process
+    final accountsBox = _boxManager.getBox<Account>(
+      BoxManager.accountsBoxName,
+      _userId,
+    );
+    final transactionsBox = _boxManager.getBox<Transaction>(
+      BoxManager.transactionsBoxName,
+      _userId,
+    );
+
+    // For each group with duplicates, merge them
+    for (var entry in accountsByKey.entries) {
+      if (entry.value.length <= 1) continue; // No duplicates
+
+      final duplicates = entry.value;
+
+      // Find the primary account (prefer correct type, then most transactions, then highest balance)
+      Account primaryAccount = duplicates.reduce((a, b) {
+        // First, prefer account with correct type
+        final aName = a.name.toUpperCase().trim();
+        final bName = b.name.toUpperCase().trim();
+        final aIsCorrectType = (aName == 'MPESA' && a.type == AccountType.Mpesa) ||
+                               (aName != 'MPESA' && a.type == AccountType.Bank);
+        final bIsCorrectType = (bName == 'MPESA' && b.type == AccountType.Mpesa) ||
+                               (bName != 'MPESA' && b.type == AccountType.Bank);
+        
+        if (aIsCorrectType && !bIsCorrectType) return a;
+        if (bIsCorrectType && !aIsCorrectType) return b;
+        
+        // If both have same type correctness, prefer most transactions
+        final aTxCount = allTransactions
+            .where((t) => t.accountId == a.id)
+            .length;
+        final bTxCount = allTransactions
+            .where((t) => t.accountId == b.id)
+            .length;
+
+        if (aTxCount > bTxCount) return a;
+        if (bTxCount > aTxCount) return b;
+        return a.balance >= b.balance ? a : b;
+      });
+      
+      // Ensure primary account has correct type and name
+      final normalizedName = primaryAccount.name.toUpperCase().trim();
+      Account updatedPrimary = primaryAccount;
+      if (normalizedName == 'MPESA' || normalizedName.contains('MPESA')) {
+        if (primaryAccount.type != AccountType.Mpesa) {
+          updatedPrimary = updatedPrimary.copyWith(type: AccountType.Mpesa);
+          print('Fixed primary account type to Mpesa: ${primaryAccount.id}');
+        }
+        if (primaryAccount.name != 'MPESA') {
+          updatedPrimary = updatedPrimary.copyWith(name: 'MPESA');
+          print('Fixed primary account name to MPESA: ${primaryAccount.id}');
+        }
+        if (updatedPrimary.type != primaryAccount.type ||
+            updatedPrimary.name != primaryAccount.name) {
+          accountsBox.put(primaryAccount.id, updatedPrimary);
+          primaryAccount = updatedPrimary;
+        }
+      }
+
+      // Get accounts to merge (excluding primary)
+      final toMerge = duplicates
+          .where((acc) => acc.id != primaryAccount.id)
+          .toList();
+
+      if (toMerge.isEmpty) continue;
+
+      print(
+        'Merging ${toMerge.length} duplicate ${entry.key} accounts into ${primaryAccount.name} (${primaryAccount.id})',
+      );
+
+      // Migrate transactions from duplicate accounts to primary
+      int migratedCount = 0;
+      for (var duplicateAccount in toMerge) {
+        final duplicateTransactions = allTransactions
+            .where((t) => t.accountId == duplicateAccount.id)
+            .toList();
+
+        for (var transaction in duplicateTransactions) {
+          final updatedTransaction = transaction.copyWith(
+            accountId: primaryAccount.id,
+          );
+          transactionsBox.put(updatedTransaction.id, updatedTransaction);
+          migratedCount++;
+        }
+
+        // Delete duplicate account
+        await accountsBox.delete(duplicateAccount.id);
+        print(
+          'Merged and deleted duplicate: ${duplicateAccount.name} (${duplicateAccount.id})',
+        );
+      }
+
+      // Update primary account balance from most recent transaction
+      final primaryTransactions = allTransactions
+          .where((t) => t.accountId == primaryAccount.id)
+          .toList();
+
+      Transaction? mostRecentWithBalance;
+      for (var transaction in primaryTransactions) {
+        if (transaction.newBalance != null && transaction.newBalance! > 0) {
+          if (mostRecentWithBalance == null ||
+              transaction.date.isAfter(mostRecentWithBalance.date)) {
+            mostRecentWithBalance = transaction;
+          }
+        }
+      }
+
+      // Update primary account balance and ensure name is "MPESA" for M-Pesa accounts
+      Account updatedAccount = primaryAccount;
+      if (primaryAccount.type == AccountType.Mpesa &&
+          primaryAccount.name != 'MPESA') {
+        updatedAccount = updatedAccount.copyWith(name: 'MPESA');
+        print('Renaming M-Pesa account to MPESA: ${primaryAccount.id}');
+      }
+
+      if (mostRecentWithBalance != null) {
+        updatedAccount = updatedAccount.copyWith(
+          balance: mostRecentWithBalance.newBalance!,
+          lastUpdated: mostRecentWithBalance.date,
+        );
+        print(
+          'Updated primary account balance to ${mostRecentWithBalance.newBalance}',
+        );
+      }
+
+      accountsBox.put(primaryAccount.id, updatedAccount);
+      print('Migrated $migratedCount transactions to primary account');
+    }
+
+    // Also ensure any remaining M-Pesa accounts (even if no duplicates) are named "MPESA"
+    for (var account in accountsBox.values) {
+      if (account.type == AccountType.Mpesa && account.name != 'MPESA') {
+        final updatedAccount = account.copyWith(name: 'MPESA');
+        accountsBox.put(account.id, updatedAccount);
+        print('Renamed M-Pesa account to MPESA: ${account.id}');
       }
     }
-    // For other accounts, use type + normalized name
-    return '${account.type}_${account.name.toUpperCase()}';
+  }
+
+  Future<void> _fixAccountTypes(Box<Account> accountsBox) async {
+    print('Fixing account types for existing accounts...');
+    int fixedCount = 0;
+
+    for (var account in accountsBox.values) {
+      AccountType correctType;
+
+      // Determine correct type based on account name (case-insensitive)
+      final normalizedName = account.name.toUpperCase().trim();
+      if (normalizedName == 'MPESA' || 
+          normalizedName == 'M-PESA' ||
+          normalizedName.contains('MPESA') ||
+          normalizedName.contains('M-PESA')) {
+        correctType = AccountType.Mpesa;
+      } else {
+        correctType = AccountType.Bank;
+      }
+
+      // Fix if type is wrong
+      if (account.type != correctType) {
+        final updatedAccount = account.copyWith(type: correctType);
+        accountsBox.put(account.id, updatedAccount);
+        print(
+          'Fixed account type for ${account.name}: ${account.type} -> $correctType',
+        );
+        fixedCount++;
+      }
+      
+      // Also ensure MPESA accounts have the correct name
+      if (correctType == AccountType.Mpesa && account.name != 'MPESA') {
+        final updatedAccount = account.copyWith(name: 'MPESA');
+        accountsBox.put(account.id, updatedAccount);
+        print('Renamed account to MPESA: ${account.id}');
+        fixedCount++;
+      }
+    }
+
+    if (fixedCount > 0) {
+      print('Fixed account types/names for $fixedCount accounts');
+    } else {
+      print('All account types are correct');
+    }
   }
 
   // Helper to calculate Net Worth
@@ -568,76 +703,13 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Fetch historical data for a specific period (This Month, Last Month, This Year)
-  // This is called when user selects a longer period that might need more messages
+  /// Navigate to SMS scanning screen when user wants to enable SMS reading
   Future<void> _requestSmsPermission() async {
-    final status = await Permission.sms.status;
-
-    if (status.isPermanentlyDenied) {
-      // Show dialog to open app settings
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            backgroundColor: AppTheme.surfaceGray,
-            title: Text(
-              'Permission Required',
-              style: GoogleFonts.poppins(
-                color: AppTheme.primaryLight,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            content: Text(
-              'SMS permission is required to automatically sync M-Pesa and bank transactions. Please enable it in app settings.',
-              style: GoogleFonts.poppins(color: AppTheme.textGray),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(
-                  'Cancel',
-                  style: GoogleFonts.poppins(color: AppTheme.textGray),
-                ),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  openAppSettings();
-                },
-                child: Text(
-                  'Open Settings',
-                  style: GoogleFonts.poppins(
-                    color: AppTheme.accentBlue,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      }
-    } else {
-      final newStatus = await Permission.sms.request();
-      if (newStatus.isGranted) {
-        setState(() {
-          _hasSmsPermission = true;
-          _isLoadingAccounts = true;
-        });
-        await _initializeFinancials();
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'SMS permission needed to sync M-Pesa automatically.',
-              ),
-              behavior: SnackBarBehavior.floating,
-              backgroundColor: AppTheme.accentRed,
-            ),
-          );
-        }
-      }
-    }
+    // Navigate to SMS scanning screen instead of requesting permission directly
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => SmsScanningScreen()),
+    );
   }
 
   // Helper to get the "Freshness" text
@@ -645,25 +717,28 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_accounts.isEmpty) return 'No data';
 
     // Find the most recent update time across all accounts
-    // Default to DateTime(2000) if no dates exist to avoid errors
     final latest = _accounts
         .map((e) => e.lastUpdated)
-        .reduce((a, b) => a.isAfter(b) ? a : b);
+        .where((date) => date != null)
+        .fold<DateTime?>(null, (prev, current) {
+          if (prev == null) return current;
+          return current.isAfter(prev) ? current : prev;
+        });
 
-    // Use local timezone for both now and latest
+    if (latest == null) return 'No data';
+
+    // Ensure we're working with local time
     final now = DateTime.now();
-    final diff = now.difference(latest);
+    final latestLocal = latest.toLocal();
+    final diff = now.difference(latestLocal);
 
     if (diff.inMinutes < 1) return 'Just now';
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) {
-      // Format using local timezone
-      final localTime = latest.toLocal();
-      return 'Today, ${DateFormat('HH:mm').format(localTime)}';
+      return 'Today, ${DateFormat('HH:mm').format(latestLocal)}';
     }
     if (diff.inDays < 2) return 'Yesterday';
-    final localTime = latest.toLocal();
-    return DateFormat('MMM d').format(localTime);
+    return DateFormat('MMM d').format(latestLocal);
   }
 
   @override
@@ -674,10 +749,8 @@ class _HomeScreenState extends State<HomeScreen> {
         child: RefreshIndicator(
           onRefresh: () async {
             await _initializeFinancials();
-            if (_hasSmsPermission) {
-              await _readSmsMessages();
-            }
-          }, // Pull to refresh syncs SMS
+            // SMS reading is handled by SMS scanning screen, not here
+          }, // Pull to refresh reloads accounts
           color: AppTheme.primaryGold,
           backgroundColor: const Color(0xFF1A2332),
           child: SingleChildScrollView(

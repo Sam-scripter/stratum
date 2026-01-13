@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:stratum/firebase_options.dart';
 import 'package:stratum/screens/home/home_screen.dart';
 import 'package:stratum/widgets/enhanced_widgets_demo.dart';
@@ -13,23 +14,25 @@ import 'package:stratum/screens/splash/splash_screen.dart';
 import 'package:stratum/theme/app_theme.dart';
 import 'package:stratum/models/box_manager.dart';
 import 'package:stratum/services/notification/notification_service.dart';
+import 'package:stratum/services/background/sms_background_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   // Initialize Hive
   await Hive.initFlutter();
   // Register all Hive adapters
   BoxManager.registerAdapters();
-  
+
   // Initialize notification service
   await NotificationService().initialize();
-  
+
+  // Initialize background SMS service
+  await BackgroundSmsService.initialize();
+
   // SMS reading is now handled in Flutter using SmsReaderService
   // No native receivers needed - reads SMS directly when app is open
-  
+
   runApp(const StratumApp());
 }
 
@@ -43,9 +46,7 @@ class StratumApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       home: const SplashScreen(),
-      routes: {
-        '/enhanced-demo': (context) => const EnhancedWidgetsDemo(),
-      },
+      routes: {'/enhanced-demo': (context) => const EnhancedWidgetsDemo()},
     );
   }
 }
@@ -80,10 +81,7 @@ class _MainScreenState extends State<MainScreen> {
             topRight: Radius.circular(20),
           ),
           border: Border(
-            top: BorderSide(
-              color: Colors.white.withOpacity(0.1),
-              width: 1,
-            ),
+            top: BorderSide(color: Colors.white.withOpacity(0.1), width: 1),
           ),
         ),
         child: BottomNavigationBar(
@@ -133,5 +131,4 @@ class _MainScreenState extends State<MainScreen> {
       ),
     );
   }
-
 }

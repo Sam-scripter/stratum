@@ -5,6 +5,13 @@
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <!-- Notification permission for Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Foreground service permission -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Wake lock for background processing -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- WorkManager permission -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     
     <application
         android:label="stratum"
@@ -37,7 +44,27 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-        
+
+        <!-- Foreground service for SMS monitoring -->
+        <service
+            android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
+
+        <!-- Broadcast receiver for SMS - temporarily disabled due to class not found -->
+        <!--
+        <receiver
+            android:name="com.pravera.flutter_foreground_task.receiver.RestartReceiver"
+            android:exported="false"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="com.pravera.flutter_foreground_task.action.RESTART_SERVICE" />
+            </intent-filter>
+        </receiver>
+        -->
+
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

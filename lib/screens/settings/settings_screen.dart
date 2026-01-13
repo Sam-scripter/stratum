@@ -15,6 +15,7 @@ import 'help_support_screen.dart';
 import 'terms_conditions_screen.dart';
 import 'privacy_policy_screen.dart';
 import 'about_screen.dart';
+import '../onboarding/sms_scanning_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -75,6 +76,21 @@ class SettingsScreen extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (context) => const MPesaIntegrationScreen(),
+                  ),
+                );
+              },
+            ),
+            _buildSettingItem(
+              context,
+              'Enable SMS Sync',
+              'Scan SMS messages to track transactions',
+              Icons.sync_outlined,
+              AppTheme.accentBlue,
+              () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const SmsScanningScreen(),
                   ),
                 );
               },
