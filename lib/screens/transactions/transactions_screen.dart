@@ -2,16 +2,22 @@
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:hive/hive.dart';
+import 'package:intl/intl.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_widgets.dart';
 import 'add_transaction_screen.dart';
 import 'transaction_detail_screen.dart';
 import '../../models/transaction/transaction_model.dart';
+import '../../models/box_manager.dart';
 
 enum TransactionFilter { all, income, expenses }
 
 class TransactionsScreen extends StatefulWidget {
-  const TransactionsScreen({Key? key}) : super(key: key);
+  final TransactionFilter? initialFilter;
+  
+  const TransactionsScreen({Key? key, this.initialFilter}) : super(key: key);
 
   @override
   State<TransactionsScreen> createState() => _TransactionsScreenState();
@@ -21,28 +27,49 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   TransactionFilter _selectedFilter = TransactionFilter.all;
   final TextEditingController _searchController = TextEditingController();
   bool _isSearchVisible = false;
+  bool _isLoading = true;
+  List<Transaction> _allTransactions = [];
+  late BoxManager _boxManager;
+  late String _userId;
 
-  // Sample transactions with dates - using outlined icons
-  final List<_TransactionExample> _allTransactions = [
-    _TransactionExample('Coffee at Java', 'Food & Dining', -350, Icons.local_cafe_outlined, AppTheme.accentOrange, DateTime.now(), '10:30 AM'),
-    _TransactionExample('Freelance Payment', 'Income', 15000, Icons.work_outline, AppTheme.accentGreen, DateTime.now(), '09:15 AM'),
-    _TransactionExample('Electricity Bill', 'Utilities', -2500, Icons.flash_on_outlined, AppTheme.accentOrange, DateTime.now().subtract(const Duration(days: 1)), '6:00 PM'),
-    _TransactionExample('Grocery Shopping', 'Food & Dining', -4200, Icons.shopping_cart_outlined, AppTheme.accentBlue, DateTime.now().subtract(const Duration(days: 1)), '2:30 PM'),
-    _TransactionExample('Salary', 'Income', 85000, Icons.account_balance_outlined, AppTheme.accentGreen, DateTime.now().subtract(const Duration(days: 1)), '8:00 AM'),
-    _TransactionExample('Netflix Subscription', 'Entertainment', -1200, Icons.movie_outlined, AppTheme.accentRed, DateTime.now().subtract(const Duration(days: 2)), '11:45 AM'),
-    _TransactionExample('Uber Ride', 'Transport', -650, Icons.local_taxi_outlined, AppTheme.accentBlue, DateTime.now().subtract(const Duration(days: 2)), '9:20 AM'),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    final user = FirebaseAuth.instance.currentUser;
+    _userId = user?.uid ?? 'anonymous_user';
+    _boxManager = BoxManager();
+    if (widget.initialFilter != null) {
+      _selectedFilter = widget.initialFilter!;
+    }
+    _loadTransactions();
+  }
 
-  List<_TransactionExample> get _filteredTransactions {
+  Future<void> _loadTransactions() async {
+    setState(() => _isLoading = true);
+    await _boxManager.openAllBoxes(_userId);
+    final transactionsBox = _boxManager.getBox<Transaction>(
+      BoxManager.transactionsBoxName,
+      _userId,
+    );
+    
+    _allTransactions = transactionsBox.values.toList();
+    _allTransactions.sort((a, b) => b.date.compareTo(a.date)); // Newest first
+    
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  List<Transaction> get _filteredTransactions {
     var transactions = _allTransactions;
 
     // Apply filter
     switch (_selectedFilter) {
       case TransactionFilter.income:
-        transactions = transactions.where((t) => t.amount >= 0).toList();
+        transactions = transactions.where((t) => t.type == TransactionType.income).toList();
         break;
       case TransactionFilter.expenses:
-        transactions = transactions.where((t) => t.amount < 0).toList();
+        transactions = transactions.where((t) => t.type == TransactionType.expense).toList();
         break;
       case TransactionFilter.all:
       default:
@@ -54,15 +81,17 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       final searchQuery = _searchController.text.toLowerCase();
       transactions = transactions.where((t) {
         return t.title.toLowerCase().contains(searchQuery) ||
-               t.category.toLowerCase().contains(searchQuery);
+               (t.description?.toLowerCase().contains(searchQuery) ?? false) ||
+               (t.recipient?.toLowerCase().contains(searchQuery) ?? false) ||
+               t.categoryName.toLowerCase().contains(searchQuery);
       }).toList();
     }
 
     return transactions;
   }
 
-  Map<String, List<_TransactionExample>> get _groupedTransactions {
-    final grouped = <String, List<_TransactionExample>>{};
+  Map<String, List<Transaction>> get _groupedTransactions {
+    final grouped = <String, List<Transaction>>{};
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final yesterday = today.subtract(const Duration(days: 1));
@@ -111,6 +140,13 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Refresh when returning to this screen
+    _loadTransactions();
   }
 
   @override
@@ -272,7 +308,14 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 if (_isSearchVisible) const SizedBox(height: 16),
 
                 // Transactions List
-                if (_filteredTransactions.isEmpty)
+                if (_isLoading)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(AppTheme.spacing48),
+                      child: CircularProgressIndicator(),
+                    ),
+                  )
+                else if (_filteredTransactions.isEmpty)
                   Center(
                     child: Padding(
                       padding: const EdgeInsets.all(AppTheme.spacing48),
@@ -398,104 +441,91 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     );
   }
 
-  Widget _buildTransactionItem(_TransactionExample transaction) {
-    // Create a mock Transaction object for navigation
-    final mockTransaction = Transaction(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      title: transaction.title,
-      amount: transaction.amount.abs(),
-      type: transaction.amount >= 0 ? TransactionType.income : TransactionType.expense,
-      category: TransactionCategory.other,
-      date: DateTime.now(),
-      accountId: 'mock_account', // Mock account ID for display purposes
-    );
+  Widget _buildTransactionItem(Transaction transaction) {
+    final isIncome = transaction.type == TransactionType.income;
+    final color = isIncome ? AppTheme.accentGreen : AppTheme.accentRed;
 
-    return Builder(
-      builder: (context) => GestureDetector(
-        onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => TransactionDetailScreen(transaction: mockTransaction),
-            ),
-          );
-        },
+    return GestureDetector(
+      onTap: () async {
+        final result = await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => TransactionDetailScreen(transaction: transaction),
+          ),
+        );
+        if (result == true && mounted) {
+          _loadTransactions();
+        }
+      },
       child: CleanCard(
         padding: const EdgeInsets.all(16),
         child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(AppTheme.spacing12),
-            decoration: BoxDecoration(
-              color: transaction.color.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: transaction.color.withOpacity(0.2),
-                width: 1,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(AppTheme.spacing12),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: color.withOpacity(0.2),
+                  width: 1,
+                ),
+              ),
+              child: Text(
+                transaction.categoryEmoji,
+                style: const TextStyle(fontSize: 22),
               ),
             ),
-            child: Icon(transaction.icon, color: transaction.color, size: 22),
-          ),
-          const SizedBox(width: AppTheme.spacing16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            const SizedBox(width: AppTheme.spacing16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    transaction.recipient ?? transaction.title,
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                      color: Colors.white,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    transaction.categoryName,
+                    style: GoogleFonts.poppins(
+                      color: Colors.white.withOpacity(0.6),
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  transaction.title,
+                  '${isIncome ? '+' : '-'}KES ${NumberFormat('#,##0').format(transaction.amount)}',
                   style: GoogleFonts.poppins(
                     fontWeight: FontWeight.w600,
                     fontSize: 15,
-                    color: Colors.white,
+                    color: color,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  transaction.category,
+                  DateFormat('HH:mm').format(transaction.date),
                   style: GoogleFonts.poppins(
-                    color: Colors.white.withOpacity(0.6),
-                    fontSize: 13,
+                    color: Colors.white.withOpacity(0.5),
+                    fontSize: 12,
                   ),
                 ),
               ],
             ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '${transaction.amount >= 0 ? '+' : ''}KES ${transaction.amount.abs().toStringAsFixed(0)}',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 15,
-                  color: transaction.amount >= 0 ? AppTheme.accentGreen : Colors.white,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                transaction.time,
-                style: GoogleFonts.poppins(
-                  color: Colors.white.withOpacity(0.5),
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
-      ),
-    ),);
+    );
   }
-}
-
-class _TransactionExample {
-  final String title;
-  final String category;
-  final double amount;
-  final IconData icon;
-  final Color color;
-  final DateTime date;
-  final String time;
-
-  _TransactionExample(this.title, this.category, this.amount, this.icon, this.color, this.date, this.time);
 }
 

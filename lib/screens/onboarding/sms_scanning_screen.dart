@@ -11,6 +11,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/background/sms_background_service.dart';
+import '../../models/account/account_model.dart';
+import '../../models/transaction/transaction_model.dart';
+import 'package:hive/hive.dart';
 
 enum ScanningState { requestPermission, scanning, processing, complete }
 
@@ -169,18 +172,6 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
         BoxManager.settingsBoxName,
         _userId,
       );
-      final appSettings = settingsBox.get(_userId) ?? AppSettings();
-      final updated = appSettings.copyWith(
-        lastMpesaSmsTimestamp: DateTime.now().millisecondsSinceEpoch,
-        initialScanComplete: true,
-      );
-      settingsBox.put(_userId, updated);
-
-      // Mark SMS onboarding as completed
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('hasCompletedSmsOnboarding', true);
-
-      // Load detected accounts
       final accountsBox = _boxManager.getBox<Account>(
         BoxManager.accountsBoxName,
         _userId,
@@ -189,6 +180,25 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
         BoxManager.transactionsBoxName,
         _userId,
       );
+      
+      // Merge duplicate accounts immediately after scanning
+      print('Merging duplicate accounts after SMS scan...');
+      await _mergeAccountsAfterScan(accountsBox, transactionsBox);
+      
+      final appSettings = settingsBox.get(_userId) ?? AppSettings();
+      final updated = appSettings.copyWith(
+        lastMpesaSmsTimestamp: DateTime.now().millisecondsSinceEpoch,
+        initialScanComplete: true,
+        accountsMerged: true, // Mark as merged
+      );
+      settingsBox.put(_userId, updated);
+      print('Account merging completed and marked in settings');
+
+      // Mark SMS onboarding as completed
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('hasCompletedSmsOnboarding', true);
+
+      // Accounts and transactions boxes already loaded above
 
       final Map<String, int> accountCounts = {};
       for (var account in accountsBox.values) {
@@ -696,5 +706,136 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
         ),
       ],
     );
+  }
+
+  // Merge duplicate accounts after SMS scanning
+  Future<void> _mergeAccountsAfterScan(
+    Box<Account> accountsBox,
+    Box<Transaction> transactionsBox,
+  ) async {
+    final allAccounts = accountsBox.values.toList();
+    final allTransactions = transactionsBox.values.toList();
+
+    // Group accounts by standardized name
+    final Map<String, List<Account>> accountsByKey = {};
+    for (var account in allAccounts) {
+      final key = _getAccountKey(account);
+      if (!accountsByKey.containsKey(key)) {
+        accountsByKey[key] = [];
+      }
+      accountsByKey[key]!.add(account);
+    }
+
+    int totalMerged = 0;
+    int totalTransactionsMigrated = 0;
+
+    // For each group with duplicates, merge them
+    for (var entry in accountsByKey.entries) {
+      if (entry.value.length <= 1) continue; // No duplicates
+
+      final duplicates = entry.value;
+
+      // Find the primary account (prefer correct type, then most transactions)
+      Account primaryAccount = duplicates.reduce((a, b) {
+        final aName = a.name.toUpperCase().trim();
+        final bName = b.name.toUpperCase().trim();
+        final aIsCorrectType = (aName == 'MPESA' && a.type == AccountType.Mpesa) ||
+                               (aName != 'MPESA' && a.type == AccountType.Bank);
+        final bIsCorrectType = (bName == 'MPESA' && b.type == AccountType.Mpesa) ||
+                               (bName != 'MPESA' && b.type == AccountType.Bank);
+        
+        if (aIsCorrectType && !bIsCorrectType) return a;
+        if (bIsCorrectType && !aIsCorrectType) return b;
+        
+        final aTxCount = allTransactions.where((t) => t.accountId == a.id).length;
+        final bTxCount = allTransactions.where((t) => t.accountId == b.id).length;
+        if (aTxCount > bTxCount) return a;
+        if (bTxCount > aTxCount) return b;
+        return a.balance >= b.balance ? a : b;
+      });
+
+      // Ensure primary account has correct type and name
+      final normalizedName = primaryAccount.name.toUpperCase().trim();
+      Account updatedPrimary = primaryAccount;
+      if (normalizedName == 'MPESA' || normalizedName.contains('MPESA')) {
+        if (primaryAccount.type != AccountType.Mpesa) {
+          updatedPrimary = updatedPrimary.copyWith(type: AccountType.Mpesa);
+        }
+        if (primaryAccount.name != 'MPESA') {
+          updatedPrimary = updatedPrimary.copyWith(name: 'MPESA');
+        }
+        if (updatedPrimary.type != primaryAccount.type ||
+            updatedPrimary.name != primaryAccount.name) {
+          accountsBox.put(primaryAccount.id, updatedPrimary);
+          primaryAccount = updatedPrimary;
+        }
+      }
+
+      // Get accounts to merge (excluding primary)
+      final toMerge = duplicates.where((acc) => acc.id != primaryAccount.id).toList();
+      if (toMerge.isEmpty) continue;
+
+      print('Merging ${toMerge.length} duplicate ${entry.key} accounts into ${primaryAccount.name}');
+
+      // Migrate transactions from duplicate accounts to primary
+      int migratedCount = 0;
+      for (var duplicateAccount in toMerge) {
+        // Get transactions from the box directly
+        final duplicateTransactions = transactionsBox.values
+            .where((t) => t.accountId == duplicateAccount.id)
+            .toList();
+
+        for (var transaction in duplicateTransactions) {
+          final updatedTransaction = transaction.copyWith(
+            accountId: primaryAccount.id,
+          );
+          transactionsBox.put(updatedTransaction.id, updatedTransaction);
+          migratedCount++;
+        }
+
+        // Delete duplicate account
+        await accountsBox.delete(duplicateAccount.id);
+      }
+
+      totalMerged += toMerge.length;
+      totalTransactionsMigrated += migratedCount;
+
+      // Update primary account balance from most recent transaction
+      final primaryTransactions = transactionsBox.values
+          .where((t) => t.accountId == primaryAccount.id)
+          .toList();
+
+      Transaction? mostRecentWithBalance;
+      for (var transaction in primaryTransactions) {
+        if (transaction.newBalance != null && transaction.newBalance! > 0) {
+          if (mostRecentWithBalance == null ||
+              transaction.date.isAfter(mostRecentWithBalance.date)) {
+            mostRecentWithBalance = transaction;
+          }
+        }
+      }
+
+      if (mostRecentWithBalance != null) {
+        final updatedAccount = primaryAccount.copyWith(
+          balance: mostRecentWithBalance.newBalance!,
+          lastUpdated: mostRecentWithBalance.date,
+        );
+        accountsBox.put(primaryAccount.id, updatedAccount);
+      }
+    }
+
+    print('Merge complete: Deleted $totalMerged duplicate accounts, migrated $totalTransactionsMigrated transactions');
+  }
+
+  // Helper to create unique key for account deduplication (same as home screen)
+  String _getAccountKey(Account account) {
+    final normalizedName = account.name.toUpperCase().trim();
+    if (normalizedName == 'MPESA' || 
+        normalizedName == 'M-PESA' ||
+        normalizedName.contains('MPESA') ||
+        normalizedName.contains('M-PESA')) {
+      return 'MPESA';
+    }
+    return normalizedName;
   }
 }

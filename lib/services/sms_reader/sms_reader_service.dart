@@ -233,13 +233,37 @@ class SmsReaderService {
     );
     print('Normalized sender address for matching: $normalizedSenderAddress');
 
-    try {
-      // Try to find account by standardized name
-      final standardizedName = _getStandardizedAccountName(accountType!);
-      account = accountsBox.values.firstWhere(
-        (acc) => acc.name == standardizedName,
+    // Try to find account by standardized name
+    final standardizedName = _getStandardizedAccountName(accountType!);
+    final matchingAccounts = accountsBox.values
+        .where((acc) => acc.name == standardizedName)
+        .toList();
+
+    if (matchingAccounts.isNotEmpty) {
+      // If multiple accounts found, pick the one with most transactions or highest balance
+      // This ensures deterministic selection
+      final transactionsBox = _boxManager.getBox<Transaction>(
+        BoxManager.transactionsBoxName,
+        userId,
       );
-      print('Found existing account: ${account.name} (${account.id})');
+      
+      account = matchingAccounts.reduce((a, b) {
+        final aTxCount = transactionsBox.values
+            .where((t) => t.accountId == a.id)
+            .length;
+        final bTxCount = transactionsBox.values
+            .where((t) => t.accountId == b.id)
+            .length;
+        
+        if (aTxCount > bTxCount) return a;
+        if (bTxCount > aTxCount) return b;
+        if (a.balance > b.balance) return a;
+        if (b.balance > a.balance) return b;
+        // If everything is equal, prefer earlier ID (deterministic)
+        return a.id.compareTo(b.id) < 0 ? a : b;
+      });
+      
+      print('Found existing account: ${account.name} (${account.id}) from ${matchingAccounts.length} matches');
 
       // Ensure account type is correct
       final correctType = accountType == 'MPESA'
@@ -248,6 +272,14 @@ class SmsReaderService {
       if (account.type != correctType) {
         print('Updating account type from ${account.type} to $correctType');
         final updatedAccount = account.copyWith(type: correctType);
+        accountsBox.put(account.id, updatedAccount);
+        account = updatedAccount;
+      }
+
+      // Ensure account name is correct (should be standardized)
+      if (account.name != standardizedName) {
+        print('Updating account name from ${account.name} to $standardizedName');
+        final updatedAccount = account.copyWith(name: standardizedName);
         accountsBox.put(account.id, updatedAccount);
         account = updatedAccount;
       }
@@ -261,16 +293,18 @@ class SmsReaderService {
         accountsBox.put(account.id, updatedAccount);
         account = updatedAccount;
       }
-    } catch (e) {
-      // Create new account
-      print('Creating new account for $accountType');
-      final standardizedName = _getStandardizedAccountName(accountType!);
+      
+      // Merge any duplicate accounts with the same name BEFORE processing transaction
+      await _mergeDuplicateAccounts(accountsBox, account);
+    } else {
+      // No matching account found, create new one
+      print('No existing account found for $accountType, creating new account');
       final newAccount = Account(
         id: const Uuid().v4(),
         name: standardizedName,
         balance: 0.0,
         type: accountType == 'MPESA' ? AccountType.Mpesa : AccountType.Bank,
-        lastUpdated: DateTime.now(),
+        lastUpdated: DateTime.now().toLocal(),
         senderAddress: address,
         isAutomated: true,
       );
@@ -278,9 +312,6 @@ class SmsReaderService {
       account = newAccount;
       print('Created new account: ${account.name} (${account.id})');
     }
-
-    // Merge any duplicate accounts with the same name
-    await _mergeDuplicateAccounts(accountsBox, account);
 
     // Parse using patterns
     final transaction = _parseFinancialSms(

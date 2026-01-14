@@ -31,6 +31,10 @@ class AppSettings extends HiveObject {
   @HiveField(5)
   final bool transactionNotificationsEnabled;
 
+  // Track if account merging has been completed (to avoid re-merging on every load)
+  @HiveField(6)
+  final bool accountsMerged;
+
   AppSettings({
     this.lastMpesaSmsTimestamp,
     this.initialScanComplete = false,
@@ -38,6 +42,7 @@ class AppSettings extends HiveObject {
     this.completedWeeks = const [],
     this.completedMonths = const [],
     this.transactionNotificationsEnabled = true, // Default to enabled
+    this.accountsMerged = false,
   });
 
   AppSettings copyWith({
@@ -47,6 +52,7 @@ class AppSettings extends HiveObject {
     List<String>? completedWeeks,
     List<String>? completedMonths,
     bool? transactionNotificationsEnabled,
+    bool? accountsMerged,
   }) {
     return AppSettings(
       lastMpesaSmsTimestamp:
@@ -58,6 +64,7 @@ class AppSettings extends HiveObject {
       transactionNotificationsEnabled:
           transactionNotificationsEnabled ??
           this.transactionNotificationsEnabled,
+      accountsMerged: accountsMerged ?? this.accountsMerged,
     );
   }
 }

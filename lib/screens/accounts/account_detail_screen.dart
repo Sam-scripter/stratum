@@ -6,6 +6,7 @@ import '../../models/transaction/transaction_model.dart';
 import '../../models/box_manager.dart';
 import '../../theme/app_theme.dart';
 import '../transactions/transaction_detail_screen.dart';
+import '../transactions/add_transaction_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class AccountDetailScreen extends StatefulWidget {
@@ -204,6 +205,29 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
                 const SizedBox(height: 20),
               ],
             ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AddTransactionScreen(
+                preSelectedAccount: widget.account,
+              ),
+            ),
+          );
+          if (result == true && mounted) {
+            _loadTransactions();
+          }
+        },
+        backgroundColor: AppTheme.accentBlue,
+        icon: const Icon(Icons.add),
+        label: Text(
+          'Add Transaction',
+          style: GoogleFonts.poppins(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
     );
   }
 
@@ -434,9 +458,8 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
                 TransactionDetailScreen(transaction: transaction),
           ),
         ).then((result) {
-          if (result == true) {
-            _loadTransactions(); // Reload after editing
-          }
+          // Always reload when returning to ensure UI is up to date
+          _loadTransactions();
         });
       },
       leading: Container(

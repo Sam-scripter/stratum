@@ -109,12 +109,19 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  bool _isMerging = false; // Flag to prevent box listeners during merge
+
   void _setupBoxListeners() {
     // Set up listeners for real-time updates when background service modifies data
     _accountsSubscription = _boxManager
         .getBox<Account>(BoxManager.accountsBoxName, _userId)
         .watch()
         .listen((event) {
+          // Don't refresh during merge operations
+          if (_isMerging) {
+            print('Accounts box changed during merge, skipping refresh');
+            return;
+          }
           print('Accounts box changed, refreshing UI');
           _refreshAccountData();
         });
@@ -123,6 +130,11 @@ class _HomeScreenState extends State<HomeScreen> {
         .getBox<Transaction>(BoxManager.transactionsBoxName, _userId)
         .watch()
         .listen((event) {
+          // Don't refresh during merge operations
+          if (_isMerging) {
+            print('Transactions box changed during merge, skipping refresh');
+            return;
+          }
           print('Transactions box changed, refreshing UI');
           _refreshAccountData();
         });
@@ -144,6 +156,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final allTransactions = transactionsBox.values.toList();
 
     // Apply the same filtering logic as in _initializeFinancials
+    // Use deterministic selection: always pick the same account ID for the same key
     final Map<String, Account> uniqueAccounts = {};
     for (var account in allAccounts) {
       final key = _getAccountKey(account);
@@ -151,6 +164,7 @@ class _HomeScreenState extends State<HomeScreen> {
         uniqueAccounts[key] = account;
       } else {
         final existing = uniqueAccounts[key]!;
+        // Deterministic: prefer account with more transactions, then higher balance, then earlier ID (alphabetically)
         final existingTxCount = allTransactions
             .where((t) => t.accountId == existing.id)
             .length;
@@ -158,9 +172,19 @@ class _HomeScreenState extends State<HomeScreen> {
             .where((t) => t.accountId == account.id)
             .length;
 
-        if (account.balance > existing.balance ||
-            (account.balance == existing.balance &&
-                currentTxCount > existingTxCount)) {
+        bool shouldReplace = false;
+        if (currentTxCount > existingTxCount) {
+          shouldReplace = true;
+        } else if (currentTxCount == existingTxCount) {
+          if (account.balance > existing.balance) {
+            shouldReplace = true;
+          } else if (account.balance == existing.balance) {
+            // If everything is equal, prefer the account with earlier ID (deterministic)
+            shouldReplace = account.id.compareTo(existing.id) < 0;
+          }
+        }
+        
+        if (shouldReplace) {
           uniqueAccounts[key] = account;
         }
       }
@@ -175,6 +199,18 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       return true;
     }).toList();
+
+    // Log which accounts are being displayed for debugging
+    if (filteredAccounts.length != _accounts.length || 
+        filteredAccounts.any((acc) => !_accounts.any((a) => a.id == acc.id))) {
+      print('Account display changed:');
+      print('  Previous: ${_accounts.map((a) => '${a.name}(${a.balance})').join(', ')}');
+      print('  Current: ${filteredAccounts.map((a) => '${a.name}(${a.balance})').join(', ')}');
+      for (var account in filteredAccounts) {
+        final txCount = allTransactions.where((t) => t.accountId == account.id).length;
+        print('    - ${account.name} (${account.id.substring(0, 8)}...): Balance=${account.balance}, Tx=$txCount, Updated=${account.lastUpdated}');
+      }
+    }
 
     setState(() {
       _accounts = filteredAccounts;
@@ -214,10 +250,40 @@ class _HomeScreenState extends State<HomeScreen> {
       final allAccounts = accountsBox.values.toList();
       final allTransactions = transactionsBox.values.toList();
 
-      // Merge duplicate accounts first (this actually consolidates them in the database)
-      await _mergeDuplicateAccounts(allAccounts, allTransactions);
+      // Check if merging has been completed before
+      final settingsBox = _boxManager.getBox<AppSettings>(
+        BoxManager.settingsBoxName,
+        _userId,
+      );
+      final appSettings = settingsBox.get(_userId) ?? AppSettings();
+      
+      // Always check for and merge duplicates (in case new ones were created)
+      // But only do a full merge if not already done
+      final duplicateCount = _countDuplicates(allAccounts);
+      print('Found ${allAccounts.length} total accounts, $duplicateCount duplicates');
+      
+      if (!appSettings.accountsMerged || duplicateCount > 0) {
+        if (!appSettings.accountsMerged) {
+          print('Accounts not yet merged, performing initial merge...');
+        } else {
+          print('Found $duplicateCount duplicate accounts, cleaning up...');
+        }
+        await _mergeDuplicateAccounts(allAccounts, allTransactions);
+        
+        // Verify merge worked - reload and check
+        final accountsAfterMerge = accountsBox.values.toList();
+        final remainingDuplicates = _countDuplicates(accountsAfterMerge);
+        print('After merge: ${accountsAfterMerge.length} accounts, $remainingDuplicates duplicates remaining');
+        
+        // Mark as merged
+        final updated = appSettings.copyWith(accountsMerged: true);
+        settingsBox.put(_userId, updated);
+        print('Account merging completed and marked');
+      } else {
+        print('Accounts already merged, no duplicates found');
+      }
 
-      // Fix account types for existing accounts
+      // Fix account types for existing accounts (always check this)
       await _fixAccountTypes(accountsBox);
 
       // Reload accounts after merging (they may have changed)
@@ -225,6 +291,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final transactionsAfterMerge = transactionsBox.values.toList();
 
       // Then deduplicate for display
+      // Use deterministic selection: always pick the same account ID for the same key
       final Map<String, Account> uniqueAccounts = {};
       for (var account in accountsAfterMerge) {
         // Create a unique key based on account type and normalized sender address
@@ -232,7 +299,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (!uniqueAccounts.containsKey(key)) {
           uniqueAccounts[key] = account;
         } else {
-          // If duplicate found, keep the one with higher balance or more transactions
+          // If duplicate found, use deterministic selection
           final existing = uniqueAccounts[key]!;
           final existingTxCount = transactionsAfterMerge
               .where((t) => t.accountId == existing.id)
@@ -241,9 +308,19 @@ class _HomeScreenState extends State<HomeScreen> {
               .where((t) => t.accountId == account.id)
               .length;
 
-          if (account.balance > existing.balance ||
-              (account.balance == existing.balance &&
-                  currentTxCount > existingTxCount)) {
+          bool shouldReplace = false;
+          if (currentTxCount > existingTxCount) {
+            shouldReplace = true;
+          } else if (currentTxCount == existingTxCount) {
+            if (account.balance > existing.balance) {
+              shouldReplace = true;
+            } else if (account.balance == existing.balance) {
+              // If everything is equal, prefer the account with earlier ID (deterministic)
+              shouldReplace = account.id.compareTo(existing.id) < 0;
+            }
+          }
+          
+          if (shouldReplace) {
             uniqueAccounts[key] = account;
           }
         }
@@ -372,6 +449,10 @@ class _HomeScreenState extends State<HomeScreen> {
     List<Account> allAccounts,
     List<Transaction> allTransactions,
   ) async {
+    // Set merging flag to prevent box listeners from triggering
+    _isMerging = true;
+    
+    try {
     // Group accounts by key
     final Map<String, List<Account>> accountsByKey = {};
     for (var account in allAccounts) {
@@ -455,11 +536,15 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
       // Migrate transactions from duplicate accounts to primary
+      // Read from transactionsBox directly to get current state (not from parameter)
       int migratedCount = 0;
       for (var duplicateAccount in toMerge) {
-        final duplicateTransactions = allTransactions
+        // Get transactions from the box directly (current state)
+        final duplicateTransactions = transactionsBox.values
             .where((t) => t.accountId == duplicateAccount.id)
             .toList();
+
+        print('Found ${duplicateTransactions.length} transactions for duplicate account ${duplicateAccount.name} (${duplicateAccount.id})');
 
         for (var transaction in duplicateTransactions) {
           final updatedTransaction = transaction.copyWith(
@@ -477,7 +562,8 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       // Update primary account balance from most recent transaction
-      final primaryTransactions = allTransactions
+      // Read from transactionsBox directly to get current state after migration
+      final primaryTransactions = transactionsBox.values
           .where((t) => t.accountId == primaryAccount.id)
           .toList();
 
@@ -521,6 +607,40 @@ class _HomeScreenState extends State<HomeScreen> {
         print('Renamed M-Pesa account to MPESA: ${account.id}');
       }
     }
+    
+    // Clear merging flag
+    _isMerging = false;
+    
+    // Force one final refresh after merge is complete
+    if (mounted) {
+      await _refreshAccountData();
+    }
+    } catch (e) {
+      _isMerging = false;
+      print('Error during account merge: $e');
+      rethrow;
+    }
+  }
+
+  // Count duplicates to check if merge is needed
+  int _countDuplicates(List<Account> allAccounts) {
+    final Map<String, List<Account>> accountsByKey = {};
+    for (var account in allAccounts) {
+      final key = _getAccountKey(account);
+      if (!accountsByKey.containsKey(key)) {
+        accountsByKey[key] = [];
+      }
+      accountsByKey[key]!.add(account);
+    }
+    
+    int duplicateCount = 0;
+    for (var entry in accountsByKey.entries) {
+      if (entry.value.length > 1) {
+        duplicateCount += entry.value.length - 1; // Count extras (excluding primary)
+        print('Duplicate group "${entry.key}": ${entry.value.length} accounts (${entry.value.map((a) => '${a.name}(${a.id.substring(0, 8)}...)').join(', ')})');
+      }
+    }
+    return duplicateCount;
   }
 
   Future<void> _fixAccountTypes(Box<Account> accountsBox) async {
@@ -1329,9 +1449,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Show filtered transactions by type
   void _showFilteredTransactions(BuildContext context, TransactionType type) {
+    final filter = type == TransactionType.income 
+        ? TransactionFilter.income 
+        : TransactionFilter.expenses;
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => TransactionsScreen()),
+      MaterialPageRoute(
+        builder: (context) => TransactionsScreen(initialFilter: filter),
+      ),
     );
   }
 
@@ -1691,7 +1816,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 onPressed: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (context) => const TransactionsScreen(),
+                      builder: (context) => const TransactionsScreen(initialFilter: null),
                     ),
                   );
                 },

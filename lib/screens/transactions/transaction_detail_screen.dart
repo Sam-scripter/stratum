@@ -122,7 +122,11 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     _userId = user?.uid ?? 'anonymous_user';
   }
 
+  bool _hasChanges = false;
+
   Future<void> _updateCategory(TransactionCategory newCategory) async {
+    if (transaction.category == newCategory) return; // No change
+    _hasChanges = true;
     await _boxManager.openAllBoxes(_userId);
     final transactionsBox = _boxManager.getBox<Transaction>(
       BoxManager.transactionsBoxName,
@@ -233,6 +237,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
 
     setState(() {
       transaction = updated;
+      _hasChanges = true; // Mark that changes were made
     });
   }
 
@@ -280,6 +285,10 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF0A0E21),
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context, _hasChanges),
+        ),
         backgroundColor: const Color(0xFF0A0E21),
         title: Text(
           'Transaction Details',

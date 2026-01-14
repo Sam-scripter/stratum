@@ -12,10 +12,12 @@ import '../../models/box_manager.dart';
 
 class AddTransactionScreen extends StatefulWidget {
   final Transaction? transactionToEdit;
+  final Account? preSelectedAccount;
 
   const AddTransactionScreen({
     Key? key,
     this.transactionToEdit,
+    this.preSelectedAccount,
   }) : super(key: key);
 
   @override
@@ -42,6 +44,10 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
   bool _isLoading = false;
   bool _isLoadingAccounts = true;
   List<Account> _accounts = [];
+  
+  // Account type selection
+  String? _selectedAccountType; // 'cash', 'mpesa', 'bank'
+  String? _selectedBankName; // For bank selection (KCB, NCBA, etc.)
 
   bool get _isEditing => widget.transactionToEdit != null;
 
@@ -98,9 +104,30 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
         setState(() {
           _accounts = accounts;
           _isLoadingAccounts = false;
-          // Set default account if none selected and accounts exist
-          if (_selectedAccountId == null && accounts.isNotEmpty) {
+          // Set default account if preSelectedAccount is provided
+          if (widget.preSelectedAccount != null) {
+            _selectedAccountId = widget.preSelectedAccount!.id;
+            // Set account type based on preSelectedAccount
+            if (widget.preSelectedAccount!.type == AccountType.Mpesa) {
+              _selectedAccountType = 'mpesa';
+            } else if (widget.preSelectedAccount!.type == AccountType.Bank) {
+              _selectedAccountType = 'bank';
+              _selectedBankName = widget.preSelectedAccount!.name;
+            } else if (widget.preSelectedAccount!.type == AccountType.Cash) {
+              _selectedAccountType = 'cash';
+            }
+          } else if (_selectedAccountId == null && accounts.isNotEmpty) {
+            // Default to first account if no pre-selection
             _selectedAccountId = accounts.first.id;
+            final firstAccount = accounts.first;
+            if (firstAccount.type == AccountType.Mpesa) {
+              _selectedAccountType = 'mpesa';
+            } else if (firstAccount.type == AccountType.Bank) {
+              _selectedAccountType = 'bank';
+              _selectedBankName = firstAccount.name;
+            } else if (firstAccount.type == AccountType.Cash) {
+              _selectedAccountType = 'cash';
+            }
           }
         });
       }
@@ -179,8 +206,98 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
     }
   }
 
+  Future<void> _updateSelectedAccount() async {
+    if (_selectedAccountType == null) return;
+    
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    
+    await _boxManager.openAllBoxes(user.uid);
+    final accountsBox = _boxManager.getBox<Account>(BoxManager.accountsBoxName, user.uid);
+    
+    Account? account;
+    
+    if (_selectedAccountType == 'cash') {
+      // Find or create Cash account
+      account = accountsBox.values.firstWhere(
+        (acc) => acc.type == AccountType.Cash,
+        orElse: () {
+          final newAccount = Account(
+            id: _uuid.v4(),
+            name: 'Cash',
+            balance: 0.0,
+            type: AccountType.Cash,
+            lastUpdated: DateTime.now().toLocal(),
+            senderAddress: 'CASH',
+            isAutomated: false,
+          );
+          accountsBox.put(newAccount.id, newAccount);
+          return newAccount;
+        },
+      );
+    } else if (_selectedAccountType == 'mpesa') {
+      // Find or create MPESA account
+      account = accountsBox.values.firstWhere(
+        (acc) => acc.name == 'MPESA' && acc.type == AccountType.Mpesa,
+        orElse: () {
+          final newAccount = Account(
+            id: _uuid.v4(),
+            name: 'MPESA',
+            balance: 0.0,
+            type: AccountType.Mpesa,
+            lastUpdated: DateTime.now().toLocal(),
+            senderAddress: 'MPESA',
+            isAutomated: false,
+          );
+          accountsBox.put(newAccount.id, newAccount);
+          return newAccount;
+        },
+      );
+    } else if (_selectedAccountType == 'bank' && _selectedBankName != null) {
+      // Find or create Bank account
+      account = accountsBox.values.firstWhere(
+        (acc) => acc.name == _selectedBankName && acc.type == AccountType.Bank,
+        orElse: () {
+          final newAccount = Account(
+            id: _uuid.v4(),
+            name: _selectedBankName!,
+            balance: 0.0,
+            type: AccountType.Bank,
+            lastUpdated: DateTime.now().toLocal(),
+            senderAddress: _selectedBankName!,
+            isAutomated: false,
+          );
+          accountsBox.put(newAccount.id, newAccount);
+          return newAccount;
+        },
+      );
+    }
+    
+    if (account != null && mounted) {
+      setState(() {
+        _selectedAccountId = account!.id;
+        // Update accounts list
+        _accounts = accountsBox.values.toList();
+      });
+    }
+  }
+
   Future<void> _handleSubmit() async {
     if (!_formKey.currentState!.validate()) return;
+    
+    // Ensure account is selected/created
+    if (_selectedAccountType == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select an account type'),
+          backgroundColor: AppTheme.accentRed,
+        ),
+      );
+      return;
+    }
+    
+    await _updateSelectedAccount();
+    
     if (_selectedAccountId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -414,13 +531,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                     Expanded(
                       child: GestureDetector(
                         onTap: () {
-                          if (mounted) {
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              if (mounted) {
-                                setState(() => _selectedType = TransactionType.income);
-                              }
-                            });
-                          }
+                          setState(() => _selectedType = TransactionType.income);
                         },
                         child: Container(
                           padding: const EdgeInsets.all(AppTheme.spacing16),
@@ -467,13 +578,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                     Expanded(
                       child: GestureDetector(
                         onTap: () {
-                          if (mounted) {
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              if (mounted) {
-                                setState(() => _selectedType = TransactionType.expense);
-                              }
-                            });
-                          }
+                          setState(() => _selectedType = TransactionType.expense);
                         },
                         child: Container(
                           padding: const EdgeInsets.all(AppTheme.spacing16),
@@ -526,32 +631,53 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
               ),
               const SizedBox(height: AppTheme.spacing16),
 
-              // Account Selection
-              if (_isLoadingAccounts)
-                const Center(child: CircularProgressIndicator())
-              else if (_accounts.isEmpty)
-                PremiumCard(
-                  padding: const EdgeInsets.all(AppTheme.spacing16),
-                  child: Text(
-                    'No accounts available. Please add an account first.',
-                    style: GoogleFonts.poppins(
-                      color: AppTheme.textGray,
-                      fontSize: 14,
+              // Account Type Selection
+              PremiumCard(
+                padding: const EdgeInsets.all(AppTheme.spacing16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Account Type',
+                      style: GoogleFonts.poppins(
+                        color: AppTheme.textGray,
+                        fontSize: 12,
+                      ),
                     ),
-                  ),
-                )
-              else
+                    const SizedBox(height: AppTheme.spacing12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildAccountTypeOption('cash', Icons.wallet, 'Cash'),
+                        ),
+                        const SizedBox(width: AppTheme.spacing12),
+                        Expanded(
+                          child: _buildAccountTypeOption('mpesa', Icons.phone_android, 'MPESA'),
+                        ),
+                        const SizedBox(width: AppTheme.spacing12),
+                        Expanded(
+                          child: _buildAccountTypeOption('bank', Icons.account_balance, 'Bank'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Bank Selection (only if Bank is selected)
+              if (_selectedAccountType == 'bank') ...[
+                const SizedBox(height: AppTheme.spacing16),
                 PremiumCard(
                   padding: EdgeInsets.zero,
                   child: DropdownButtonFormField<String>(
-                    value: _selectedAccountId,
+                    value: _selectedBankName,
                     decoration: InputDecoration(
-                      labelText: 'Account',
+                      labelText: 'Select Bank',
                       labelStyle: GoogleFonts.poppins(
                         color: AppTheme.textGray,
                       ),
                       prefixIcon: Icon(
-                        Icons.account_balance_wallet,
+                        Icons.account_balance,
                         color: AppTheme.accentBlue,
                       ),
                       filled: false,
@@ -563,51 +689,34 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                       color: AppTheme.primaryLight,
                       fontSize: 15,
                     ),
-                    items: _accounts.map((account) {
+                    items: ['KCB', 'EQUITY', 'NCBA', 'COOP', 'STANBIC', 'Other'].map((bank) {
                       return DropdownMenuItem<String>(
-                        value: account.id,
-                        child: Row(
-                          children: [
-                            Icon(
-                              account.type == AccountType.Mpesa
-                                  ? Icons.phone_android
-                                  : account.type == AccountType.Bank
-                                      ? Icons.account_balance
-                                      : Icons.wallet,
-                              color: AppTheme.accentBlue,
-                              size: 20,
-                            ),
-                            const SizedBox(width: AppTheme.spacing8),
-                            Text(account.name),
-                            const Spacer(),
-                            Text(
-                              'KES ${account.balance.toStringAsFixed(2)}',
-                              style: GoogleFonts.poppins(
-                                color: AppTheme.textGray,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
+                        value: bank,
+                        child: Text(bank),
                       );
                     }).toList(),
                     onChanged: (value) {
                       if (mounted) {
                         WidgetsBinding.instance.addPostFrameCallback((_) {
                           if (mounted) {
-                            setState(() => _selectedAccountId = value);
+                            setState(() {
+                              _selectedBankName = value;
+                              _selectedAccountId = null; // Reset to find/create account
+                            });
+                            _updateSelectedAccount();
                           }
                         });
                       }
                     },
                     validator: (value) {
-                      if (value == null) {
-                        return 'Please select an account';
+                      if (_selectedAccountType == 'bank' && value == null) {
+                        return 'Please select a bank';
                       }
                       return null;
                     },
                   ),
                 ),
+              ],
               const SizedBox(height: AppTheme.spacing16),
 
               // Amount Field
@@ -1011,6 +1120,55 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
               const SizedBox(height: AppTheme.spacing32),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAccountTypeOption(String type, IconData icon, String label) {
+    final isSelected = _selectedAccountType == type;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedAccountType = type;
+          _selectedAccountId = null; // Reset to find/create account
+          if (type != 'bank') {
+            _selectedBankName = null;
+          }
+        });
+        _updateSelectedAccount();
+      },
+      child: Container(
+        padding: const EdgeInsets.all(AppTheme.spacing12),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppTheme.accentBlue.withOpacity(0.2)
+              : AppTheme.surfaceGray.withOpacity(0.5),
+          borderRadius: BorderRadius.circular(AppTheme.radius12),
+          border: Border.all(
+            color: isSelected
+                ? AppTheme.accentBlue
+                : AppTheme.borderGray,
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              icon,
+              color: isSelected ? AppTheme.accentBlue : AppTheme.textGray,
+              size: 24,
+            ),
+            const SizedBox(height: AppTheme.spacing8),
+            Text(
+              label,
+              style: GoogleFonts.poppins(
+                color: isSelected ? AppTheme.accentBlue : AppTheme.textGray,
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+          ],
         ),
       ),
     );
