@@ -16,7 +16,6 @@ import '../../theme/app_theme.dart';
 import '../../models/transaction/transaction_model.dart';
 import '../../services/finances/financial_service.dart';
 import '../transactions/transactions_screen.dart';
-import '../budgets/add_budget_screen.dart';
 import '../reports/reports_screen.dart';
 import '../ai_advisor/ai_advisor_screen.dart';
 import '../notifications/notifications_screen.dart';
@@ -25,6 +24,7 @@ import '../accounts/account_detail_screen.dart';
 import '../onboarding/sms_scanning_screen.dart';
 import '../budgets/budget_screen.dart';
 import '../../services/finances/budget_service.dart';
+import 'package:hive/hive.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -139,7 +139,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  // bool _isMerging = false; // Flag to prevent box listeners during merge
+  bool _isRefreshing = false;
 
   void _setupBoxListeners() {
     // Set up listeners for real-time updates when background service modifies data
@@ -147,9 +147,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         .getBox<Account>(BoxManager.accountsBoxName, _userId)
         .watch()
         .listen((event) {
-          // No need to check _isMerging anymore
-          print('Accounts box changed, refreshing UI');
-          _refreshAccountData();
+          if (mounted && !_isRefreshing) { // ✅ ADD flag check
+            _isRefreshing = true;
+            print('Accounts box changed, refreshing UI');
+            _refreshAccountData().then((_) {
+              if (mounted) {
+                _isRefreshing = false;
+              }
+            });
+          }
         });
 
     _transactionsSubscription = _boxManager
@@ -245,6 +251,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
   }
 
+  late Box<Account> _accountsBox;
+  late Box<Transaction> _transactionsBox;
+
   Future<void> _initializeFinancials() async {
     // 1. Check SMS permission status (but don't request it)
     final status = await Permission.sms.status;
@@ -253,6 +262,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
 
     await _boxManager.openAllBoxes(_userId);
+
+    // Cache boxes
+    _accountsBox = _boxManager.getBox<Account>(
+      BoxManager.accountsBoxName,
+      _userId,
+    );
+    _transactionsBox = _boxManager.getBox<Transaction>(
+      BoxManager.transactionsBoxName,
+      _userId,
+    );
 
     // Set up box listeners now that boxes are open
     _setupBoxListeners();
@@ -902,157 +921,183 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // --- UPDATED: Net Worth Card with Freshness Indicator ---
   Widget _buildNetWorthCard() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              const Color(0xFF1A2332),
-              const Color(0xFF1A2332).withOpacity(0.8),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withOpacity(0.1)),
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppTheme.backgroundLight,
+            AppTheme.backgroundLight.withOpacity(0.8),
+          ],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // Left Side: Title + Status Dot
-                Row(
-                  children: [
-                    Text(
-                      'TOTAL NET WORTH',
-                      style: GoogleFonts.poppins(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white.withOpacity(0.5),
-                        letterSpacing: 1.5,
-                      ),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    'TOTAL NET WORTH',
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textGray,
+                      letterSpacing: 1.5,
                     ),
-                    const SizedBox(width: 8),
-                    // The "Freshness" Dot
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: _hasSmsPermission
-                            ? AppTheme.accentGreen
-                            : Colors.orange,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color:
-                                (_hasSmsPermission
-                                        ? AppTheme.accentGreen
-                                        : Colors.orange)
-                                    .withOpacity(0.4),
-                            blurRadius: 4,
-                            spreadRadius: 1,
-                          ),
-                        ],
-                      ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: _hasSmsPermission
+                          ? AppTheme.positive
+                          : AppTheme.warning,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: (_hasSmsPermission
+                              ? AppTheme.positive
+                              : AppTheme.warning).withOpacity(0.5),
+                          blurRadius: 8,
+                          spreadRadius: 2,
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-
-                // Right Side: Permission Status (Simplified)
-                if (!_hasSmsPermission)
-                  GestureDetector(
-                    onTap: _requestSmsPermission,
+                  ),
+                ],
+              ),
+              if (!_hasSmsPermission)
+                GestureDetector(
+                  onTap: _requestSmsPermission,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: AppTheme.warningGradient,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
                     child: Text(
                       'Enable Sync',
                       style: GoogleFonts.poppins(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
-                        color: AppTheme.primaryGold,
+                        color: Colors.white,
                       ),
                     ),
                   ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  'KES ',
-                  style: GoogleFonts.poppins(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w300,
-                    color: Colors.white60,
-                    height: 2,
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                'KES ',
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w300,
+                  color: AppTheme.textGray,
+                  height: 2,
+                ),
+              ),
+              Expanded(
+                child: _isLoadingAccounts
+                    ? ShaderMask( // ✅ IMPROVED loading
+                  shaderCallback: (bounds) {
+                    return LinearGradient(
+                      colors: [
+                        AppTheme.primaryGold,
+                        AppTheme.lightGold,
+                        AppTheme.primaryGold,
+                      ],
+                      stops: const [0.0, 0.5, 1.0],
+                    ).createShader(bounds);
+                  },
+                  child: Container(
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                )
+                    : ShaderMask( // ✅ GOLD gradient on amount
+                  shaderCallback: (bounds) {
+                    return AppTheme.goldGradient.createShader(
+                      Rect.fromLTWH(0, 0, bounds.width, bounds.height),
+                    );
+                  },
+                  child: Text(
+                    _isBalanceVisible
+                        ? _totalNetWorth
+                        .toStringAsFixed(0)
+                        .replaceAllMapped(
+                      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+                          (Match m) => '${m[1]},',
+                    )
+                        : '••••••',
+                    style: GoogleFonts.poppins(
+                      fontSize: 40,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      height: 1.0,
+                    ),
                   ),
                 ),
-                Expanded(
-                  child: _isLoadingAccounts
-                      ? SizedBox(
-                          height: 30,
-                          child: LinearProgressIndicator(
-                            color: AppTheme.primaryGold,
-                            backgroundColor: Colors.transparent,
-                          ),
-                        )
-                      : Text(
-                          _isBalanceVisible
-                              ? _totalNetWorth
-                                    .toStringAsFixed(0)
-                                    .replaceAllMapped(
-                                      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-                                      (Match m) => '${m[1]},',
-                                    )
-                              : '••••••',
-                          style: GoogleFonts.poppins(
-                            fontSize: 36,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                            height: 1.0,
-                          ),
-                        ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Icon(
+                Icons.access_time,
+                size: 12,
+                color: AppTheme.textGray.withOpacity(0.5),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Updated $_lastUpdatedText',
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  color: AppTheme.textGray.withOpacity(0.5),
+                  fontWeight: FontWeight.w400,
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            // The "Last Updated" Text
-            Row(
-              children: [
-                Icon(
-                  Icons.access_time,
-                  size: 12,
-                  color: Colors.white.withOpacity(0.3),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => setState(() =>
+                _isBalanceVisible = !_isBalanceVisible
                 ),
-                const SizedBox(width: 6),
-                Text(
-                  'Updated $_lastUpdatedText',
-                  style: GoogleFonts.poppins(
-                    fontSize: 11,
-                    color: Colors.white.withOpacity(0.3),
-                    fontWeight: FontWeight.w500,
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.backgroundDeep.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                ),
-                const Spacer(),
-                // Eye Icon moved here for better balance
-                GestureDetector(
-                  onTap: () =>
-                      setState(() => _isBalanceVisible = !_isBalanceVisible),
                   child: Icon(
                     _isBalanceVisible
                         ? Icons.visibility_outlined
                         : Icons.visibility_off_outlined,
-                    color: Colors.white.withOpacity(0.3),
-                    size: 18,
+                    color: AppTheme.textGray.withOpacity(0.5),
+                    size: 16,
                   ),
                 ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

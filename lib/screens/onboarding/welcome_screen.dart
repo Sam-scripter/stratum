@@ -52,7 +52,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> with SingleTickerProvider
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.primaryDark,
+      backgroundColor: AppTheme.backgroundDeep,
       body: SafeArea(
         child: Column(
           children: [
@@ -65,8 +65,9 @@ class _WelcomeScreenState extends State<WelcomeScreen> with SingleTickerProvider
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      gradient: AppTheme.premiumGradient,
+                      gradient: AppTheme.goldGradient,
                       shape: BoxShape.circle,
+                      boxShadow: [AppTheme.softGlow(AppTheme.primaryGold)],
                     ),
                     child: Center(
                       child: Text(
@@ -118,6 +119,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> with SingleTickerProvider
                   _pages.length,
                       (index) => AnimatedContainer(
                     duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
                     margin: const EdgeInsets.symmetric(horizontal: 4),
                     width: _currentPage == index ? 24 : 8,
                     height: 8,

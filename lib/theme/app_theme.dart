@@ -1,82 +1,98 @@
-// app_theme.dart:
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
-  // Premium Color Palette
-  static const Color primaryGold = Color(0xFFD4AF37); // Luxury Gold
-  static const Color lightGold = Color(0xFFE5C158); // Light Gold
-  static const Color darkGold = Color(0xFFB8941F); // Dark Gold
-  static const Color platinum = Color(0xFFE5E4E2); // Platinum
-  static const Color primaryDark = Color(0xFF0A0E1A); // Deep Navy/Black (darker)
-  static const Color cardBg = Color(0xFF141821); // Card Background (slightly lighter)
-  static const Color primaryLight = Color(0xFFF8F9FA); // Off-white
-  static const Color accentBlue = Color(0xFF4A90E2); // Professional Blue
-  static const Color accentGreen = Color(0xFF00D9A3); // Success Green (brighter)
-  static const Color accentRed = Color(0xFFEF4444); // Alert Red
-  static const Color accentOrange = Color(0xFFF59E0B); // Warning Orange
-  static const Color deepPurple = Color(0xFF1A0F2E); // Deep Purple
-  static const Color surfaceGray = Color(0xFF1F2937); // Card Background (keep for compatibility)
-  static const Color borderGray = Color(0xFF374151); // Border Color
-  static const Color textGray = Color(0xFFD1D5DB); // Light Text
+  // Base Colors (Keep your existing)
+  static const Color primaryGold = Color(0xFFD4AF37);
+  static const Color lightGold = Color(0xFFE5C158);
+  static const Color darkGold = Color(0xFFB8941F);
+  static const Color platinum = Color(0xFFE5E4E2);
+  static const Color primaryDark = Color(0xFF0A0E1A);
+  static const Color cardBg = Color(0xFF141821);
+  static const Color primaryLight = Color(0xFFF8F9FA);
+  static const Color surfaceGray = Color(0xFF1F2937);
+  static const Color borderGray = Color(0xFF374151);
+  static const Color textGray = Color(0xFFD1D5DB);
 
-  // Gradients for Premium Feel
+  // Enhanced Accent Colors (New)
+  static const Color accentBlue = Color(0xFF4A90E2);
+  static const Color accentGreen = Color(0xFF10B981); // Brighter
+  static const Color accentRed = Color(0xFFEF4444);
+  static const Color accentOrange = Color(0xFFF59E0B);
+  static const Color accentPurple = Color(0xFF8B5CF6); // New
+  static const Color accentTeal = Color(0xFF14B8A6); // New
+  static const Color accentAmber = Color(0xFFFBBF24); // New
+  static const Color accentIndigo = Color(0xFF6366F1); // New
+
+  // Semantic Colors (New)
+  static const Color positive = Color(0xFF10B981);
+  static const Color negative = Color(0xFFEF4444);
+  static const Color neutral = Color(0xFF6B7280);
+  static const Color insight = Color(0xFF8B5CF6);
+  static const Color warning = Color(0xFFF59E0B);
+
+  // Background Variations (New)
+  static const Color backgroundDeep = Color(0xFF0A0E1A); // Deepest
+  static const Color backgroundMid = Color(0xFF141821); // Mid layer
+  static const Color backgroundLight = Color(0xFF1A2332); // Lightest
+
+  // Gradients
   static const LinearGradient premiumGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF0A0E1A), // Deep Navy
-      Color(0xFF1A0F2E), // Deep Purple
-      Color(0xFF0A0E1A), // Deep Navy
+      Color(0xFF0A0E1A),
+      Color(0xFF1A0F2E),
+      Color(0xFF0A0E1A),
     ],
   );
 
-  // Alias for primary gradient
   static LinearGradient get primaryGradient => premiumGradient;
 
   static const LinearGradient goldGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFFF4D03F), // Bright gold
-      Color(0xFFD4AF37), // Standard gold
-      Color(0xFFB8941A), // Deep gold
-      Color(0xFFA89968), // Dark gold
+      Color(0xFFF4D03F),
+      Color(0xFFD4AF37),
+      Color(0xFFB8941A),
+      Color(0xFFA89968),
     ],
     stops: [0.0, 0.33, 0.66, 1.0],
   );
 
-  // Gold to Platinum gradient for text
-  static const LinearGradient goldToPlatinumGradient = LinearGradient(
-    colors: [
-      Color(0xFFD4AF37), // Gold
-      Color(0xFFE5C158), // Light Gold
-      Color(0xFFE5E4E2), // Platinum
-    ],
-  );
-
-  // Gold shimmer gradient for animations
-  static const LinearGradient goldShimmerGradient = LinearGradient(
-    begin: Alignment(-1.0, -0.5),
-    end: Alignment(1.0, 0.5),
-    colors: [
-      Color(0xFFD4AF37),
-      Color(0xFFE5C158),
-      Color(0xFFE5E4E2),
-      Color(0xFFE5C158),
-      Color(0xFFD4AF37),
-    ],
-    stops: [0.0, 0.3, 0.5, 0.7, 1.0],
-  );
-
+  // New Gradients
   static const LinearGradient successGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [
-      Color(0xFF10B981), // Green
-      Color(0xFF059669), // Darker Green
-    ],
+    colors: [Color(0xFF10B981), Color(0xFF059669)],
+  );
+
+  static const LinearGradient insightGradient = LinearGradient(
+    colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)],
+  );
+
+  static const LinearGradient warningGradient = LinearGradient(
+    colors: [Color(0xFFF59E0B), Color(0xFFEF4444)],
+  );
+
+  // Neumorphic Shadow (New)
+  static List<BoxShadow> get neumorphicShadow => [
+    BoxShadow(
+      color: Colors.black.withOpacity(0.3),
+      offset: const Offset(4, 4),
+      blurRadius: 15,
+    ),
+    BoxShadow(
+      color: Colors.white.withOpacity(0.03),
+      offset: const Offset(-4, -4),
+      blurRadius: 15,
+    ),
+  ];
+
+  // Soft Glow (New)
+  static BoxShadow softGlow(Color color) => BoxShadow(
+    color: color.withOpacity(0.3),
+    blurRadius: 20,
+    spreadRadius: 2,
   );
 
   // Light Theme
@@ -84,12 +100,11 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      scaffoldBackgroundColor: const Color(0xFF0A1628), // Deep navy - clean design
-      primaryColor: accentBlue, // Use accent blue instead of gold
+      scaffoldBackgroundColor: backgroundDeep,
+      primaryColor: primaryGold,
 
-      // AppBar Theme
       appBarTheme: AppBarTheme(
-        backgroundColor: primaryDark,
+        backgroundColor: backgroundDeep,
         elevation: 0,
         centerTitle: true,
         titleTextStyle: GoogleFonts.poppins(
@@ -99,11 +114,9 @@ class AppTheme {
         ),
       ),
 
-      // Text Themes
       textTheme: TextTheme(
-        // Display Styles
         displayLarge: GoogleFonts.poppins(
-          fontSize: 32,
+          fontSize: 36,
           fontWeight: FontWeight.w700,
           color: primaryLight,
           letterSpacing: -0.5,
@@ -118,15 +131,11 @@ class AppTheme {
           fontWeight: FontWeight.w600,
           color: primaryLight,
         ),
-
-        // Headline Styles
         headlineSmall: GoogleFonts.poppins(
           fontSize: 18,
           fontWeight: FontWeight.w600,
           color: primaryLight,
         ),
-
-        // Title Styles
         titleLarge: GoogleFonts.poppins(
           fontSize: 16,
           fontWeight: FontWeight.w600,
@@ -137,8 +146,6 @@ class AppTheme {
           fontWeight: FontWeight.w500,
           color: textGray,
         ),
-
-        // Body Styles
         bodyLarge: GoogleFonts.poppins(
           fontSize: 16,
           fontWeight: FontWeight.w400,
@@ -154,27 +161,24 @@ class AppTheme {
           fontWeight: FontWeight.w400,
           color: textGray,
         ),
-
-        // Label Styles
         labelLarge: GoogleFonts.poppins(
           fontSize: 12,
           fontWeight: FontWeight.w600,
-          color: accentBlue, // Use accent blue instead of gold
+          color: primaryGold,
         ),
       ),
 
-      // Button Themes - Using accent blue instead of gold for calm design
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: accentBlue,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+          backgroundColor: primaryGold,
+          foregroundColor: primaryDark,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          elevation: 0, // No elevation for clean design
+          elevation: 0,
           textStyle: GoogleFonts.poppins(
-            fontSize: 14,
+            fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -182,9 +186,9 @@ class AppTheme {
 
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: accentBlue,
-          side: BorderSide(color: accentBlue, width: 1.5),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+          foregroundColor: primaryGold,
+          side: const BorderSide(color: primaryGold, width: 1.5),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
@@ -195,42 +199,39 @@ class AppTheme {
         ),
       ),
 
-      // Input Decoration Theme
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: surfaceGray,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        fillColor: backgroundLight,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: borderGray),
+          borderSide: BorderSide(color: borderGray.withOpacity(0.3)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: borderGray),
+          borderSide: BorderSide(color: borderGray.withOpacity(0.3)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: accentBlue, width: 2),
+          borderSide: const BorderSide(color: primaryGold, width: 2),
         ),
         hintStyle: GoogleFonts.poppins(
           fontSize: 14,
-          color: textGray,
+          color: textGray.withOpacity(0.6),
         ),
       ),
 
-      // Card Theme
       cardTheme: CardThemeData(
-        color: surfaceGray,
-        elevation: 4,
+        color: backgroundLight,
+        elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
       ),
 
-      // Chip Theme
       chipTheme: ChipThemeData(
-        backgroundColor: surfaceGray,
-        selectedColor: accentBlue, // Use accent blue instead of gold
+        backgroundColor: backgroundLight,
+        selectedColor: primaryGold,
         labelStyle: GoogleFonts.poppins(
           fontSize: 12,
           fontWeight: FontWeight.w500,
@@ -243,7 +244,7 @@ class AppTheme {
     );
   }
 
-  // Spacing Constants
+  // Spacing
   static const double spacing4 = 4.0;
   static const double spacing8 = 8.0;
   static const double spacing12 = 12.0;
@@ -253,7 +254,7 @@ class AppTheme {
   static const double spacing32 = 32.0;
   static const double spacing48 = 48.0;
 
-  // Border Radius Constants
+  // Border Radius
   static const double radius8 = 8.0;
   static const double radius12 = 12.0;
   static const double radius16 = 16.0;

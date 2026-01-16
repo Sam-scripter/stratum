@@ -142,6 +142,7 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
   }
 
   Future<void> _startScanning() async {
+    if (!mounted) return;
     setState(() {
       _currentState = ScanningState.scanning;
     });
@@ -180,11 +181,11 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
         BoxManager.transactionsBoxName,
         _userId,
       );
-      
+
       // Merge duplicate accounts immediately after scanning
       print('Merging duplicate accounts after SMS scan...');
       await _mergeAccountsAfterScan(accountsBox, transactionsBox);
-      
+
       final appSettings = settingsBox.get(_userId) ?? AppSettings();
       final updated = appSettings.copyWith(
         lastMpesaSmsTimestamp: DateTime.now().millisecondsSinceEpoch,
@@ -406,9 +407,13 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
               alignment: Alignment.center,
               children: [
                 // Background circle
-                SizedBox(
-                  width: 150,
-                  height: 150,
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      AppTheme.softGlow(AppTheme.accentBlue),
+                    ],
+                  ),
                   child: CircularProgressIndicator(
                     value: progress,
                     strokeWidth: 8,
@@ -739,16 +744,22 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
       Account primaryAccount = duplicates.reduce((a, b) {
         final aName = a.name.toUpperCase().trim();
         final bName = b.name.toUpperCase().trim();
-        final aIsCorrectType = (aName == 'MPESA' && a.type == AccountType.Mpesa) ||
-                               (aName != 'MPESA' && a.type == AccountType.Bank);
-        final bIsCorrectType = (bName == 'MPESA' && b.type == AccountType.Mpesa) ||
-                               (bName != 'MPESA' && b.type == AccountType.Bank);
-        
+        final aIsCorrectType =
+            (aName == 'MPESA' && a.type == AccountType.Mpesa) ||
+            (aName != 'MPESA' && a.type == AccountType.Bank);
+        final bIsCorrectType =
+            (bName == 'MPESA' && b.type == AccountType.Mpesa) ||
+            (bName != 'MPESA' && b.type == AccountType.Bank);
+
         if (aIsCorrectType && !bIsCorrectType) return a;
         if (bIsCorrectType && !aIsCorrectType) return b;
-        
-        final aTxCount = allTransactions.where((t) => t.accountId == a.id).length;
-        final bTxCount = allTransactions.where((t) => t.accountId == b.id).length;
+
+        final aTxCount = allTransactions
+            .where((t) => t.accountId == a.id)
+            .length;
+        final bTxCount = allTransactions
+            .where((t) => t.accountId == b.id)
+            .length;
         if (aTxCount > bTxCount) return a;
         if (bTxCount > aTxCount) return b;
         return a.balance >= b.balance ? a : b;
@@ -772,10 +783,14 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
       }
 
       // Get accounts to merge (excluding primary)
-      final toMerge = duplicates.where((acc) => acc.id != primaryAccount.id).toList();
+      final toMerge = duplicates
+          .where((acc) => acc.id != primaryAccount.id)
+          .toList();
       if (toMerge.isEmpty) continue;
 
-      print('Merging ${toMerge.length} duplicate ${entry.key} accounts into ${primaryAccount.name}');
+      print(
+        'Merging ${toMerge.length} duplicate ${entry.key} accounts into ${primaryAccount.name}',
+      );
 
       // Migrate transactions from duplicate accounts to primary
       int migratedCount = 0;
@@ -824,13 +839,15 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
       }
     }
 
-    print('Merge complete: Deleted $totalMerged duplicate accounts, migrated $totalTransactionsMigrated transactions');
+    print(
+      'Merge complete: Deleted $totalMerged duplicate accounts, migrated $totalTransactionsMigrated transactions',
+    );
   }
 
   // Helper to create unique key for account deduplication (same as home screen)
   String _getAccountKey(Account account) {
     final normalizedName = account.name.toUpperCase().trim();
-    if (normalizedName == 'MPESA' || 
+    if (normalizedName == 'MPESA' ||
         normalizedName == 'M-PESA' ||
         normalizedName.contains('MPESA') ||
         normalizedName.contains('M-PESA')) {

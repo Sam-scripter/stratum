@@ -17,7 +17,7 @@ class GradientText extends StatelessWidget {
     required this.text,
     this.style,
     this.textAlign,
-    this.gradient = AppTheme.goldToPlatinumGradient,
+    this.gradient = AppTheme.goldGradient,
   }) : super(key: key);
 
   @override
@@ -788,7 +788,7 @@ class ShimmerWidget extends StatefulWidget {
     Key? key,
     required this.child,
     this.duration = const Duration(milliseconds: 2000),
-    this.gradient = AppTheme.goldShimmerGradient,
+    this.gradient = AppTheme.goldGradient,
   }) : super(key: key);
 
   @override
