@@ -1,4 +1,4 @@
-// app_theme.dart (stratum):
+// app_theme.dart:
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -86,7 +86,7 @@ class AppTheme {
       brightness: Brightness.dark,
       scaffoldBackgroundColor: const Color(0xFF0A1628), // Deep navy - clean design
       primaryColor: accentBlue, // Use accent blue instead of gold
-      
+
       // AppBar Theme
       appBarTheme: AppBarTheme(
         backgroundColor: primaryDark,

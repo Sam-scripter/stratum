@@ -49,7 +49,7 @@ dependencies:
   lottie: ^2.4.0
 
   # Local Storage
-  shared_preferences: ^2.2.2
+  shared_preferences: ^2.5.4
 
   # HTTP & API
   http: ^1.1.0
@@ -63,7 +63,7 @@ dependencies:
   # SMS detection uses flutter_sms_inbox (already in dependencies) with periodic polling
   
   # Notifications
-  flutter_local_notifications: ^17.2.3
+  flutter_local_notifications: ^19.5.0
   
   # Firebase
   firebase_core: ^4.2.1
@@ -74,6 +74,7 @@ dependencies:
   uuid: ^4.5.2
   flutter_foreground_task: ^9.2.0
   workmanager: ^0.9.0+3
+  flutter_background_service: ^5.1.0
 
 dev_dependencies:
   flutter_test:

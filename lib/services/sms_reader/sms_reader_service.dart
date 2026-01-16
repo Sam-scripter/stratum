@@ -144,6 +144,52 @@ class SmsReaderService {
     }
   }
 
+  /// Scan recent messages (e.g. last 20) and save any new ones found.
+  /// Useful for Pull-to-Refresh or On-Resume checks.
+  Future<int> scanRecentMessages({int count = 20}) async {
+    try {
+      await _boxManager.openAllBoxes(userId);
+      final messages = await _query.querySms(
+        kinds: [SmsQueryKind.inbox],
+        count: count,
+      );
+
+      int transactionsFound = 0;
+      final List<Transaction> allTransactions = [];
+      final Set<String> financialSenders = {
+        'MPESA', 'M-PESA', 'SAFARICOM', 'KCB', 'EQUITY', 'COOP',
+        'CO-OP', 'NCBA', 'STANBIC',
+      };
+
+      for (final message in messages) {
+        final address = message.address?.toUpperCase() ?? '';
+        final isFinancial = financialSenders.any((s) => address.contains(s));
+
+        if (isFinancial && message.body != null) {
+          final transaction = await _parseSmsToTransaction(
+            message.address!,
+            message.body!,
+            message.date ?? DateTime.now(),
+          );
+          
+          if (transaction != null) {
+            allTransactions.add(transaction);
+            transactionsFound++;
+          }
+        }
+      }
+
+      if (allTransactions.isNotEmpty) {
+        await _saveTransactions(allTransactions);
+      }
+      
+      return transactionsFound;
+    } catch (e) {
+      print('Error scanning recent messages: $e');
+      return 0;
+    }
+  }
+
   /// Legacy method - kept for backward compatibility
   Stream<SmsReadProgress> readAllSms() async* {
     yield* scanAllMessages();
@@ -151,22 +197,11 @@ class SmsReaderService {
 
   /// Normalize sender address to handle variations (MPESA, M-PESA, SAFARICOM all map to MPESA)
   String _getStandardizedAccountName(String accountType) {
-    switch (accountType) {
-      case 'MPESA':
-        return 'MPESA';
-      case 'KCB':
-        return 'KCB';
-      case 'EQUITY':
-        return 'EQUITY';
-      case 'COOP':
-        return 'COOP';
-      case 'NCBA':
-        return 'NCBA';
-      case 'STANBIC':
-        return 'STANBIC';
-      default:
-        return accountType;
+    final upperType = accountType.toUpperCase();
+    if (upperType.contains('MPESA') || upperType.contains('M-PESA')) {
+      return 'MPESA';
     }
+    return upperType;
   }
 
   /// Normalize sender address for account matching purposes
@@ -191,9 +226,7 @@ class SmsReaderService {
     DateTime date,
   ) async {
     final normalizedAddress = address.toUpperCase().trim();
-    print(
-      'Parsing SMS from address: $address (normalized: $normalizedAddress)',
-    );
+    // print('Parsing SMS from address: $address (normalized: $normalizedAddress)');
 
     String? accountType;
     if (normalizedAddress.contains('MPESA') || normalizedAddress == 'MPESA') {
@@ -219,86 +252,47 @@ class SmsReaderService {
       userId,
     );
 
-    print('Looking for account type: $accountType');
-    print(
-      'Existing accounts: ${accountsBox.values.map((a) => '${a.name} (${a.id}) - sender: ${a.senderAddress}').toList()}',
-    );
-
+    // Standardize the name to find existing accounts reliably
+    final standardizedName = _getStandardizedAccountName(accountType);
+    
+    // Find existing account by standardized name
     Account? account;
-
-    // Normalize sender address for matching
-    final normalizedSenderAddress = _normalizeSenderAddress(
-      address,
-      accountType,
-    );
-    print('Normalized sender address for matching: $normalizedSenderAddress');
-
-    // Try to find account by standardized name
-    final standardizedName = _getStandardizedAccountName(accountType!);
-    final matchingAccounts = accountsBox.values
-        .where((acc) => acc.name == standardizedName)
-        .toList();
-
-    if (matchingAccounts.isNotEmpty) {
-      // If multiple accounts found, pick the one with most transactions or highest balance
-      // This ensures deterministic selection
-      final transactionsBox = _boxManager.getBox<Transaction>(
-        BoxManager.transactionsBoxName,
-        userId,
+    try {
+      account = accountsBox.values.firstWhere(
+        (acc) => acc.name == standardizedName,
       );
-      
-      account = matchingAccounts.reduce((a, b) {
-        final aTxCount = transactionsBox.values
-            .where((t) => t.accountId == a.id)
-            .length;
-        final bTxCount = transactionsBox.values
-            .where((t) => t.accountId == b.id)
-            .length;
-        
-        if (aTxCount > bTxCount) return a;
-        if (bTxCount > aTxCount) return b;
-        if (a.balance > b.balance) return a;
-        if (b.balance > a.balance) return b;
-        // If everything is equal, prefer earlier ID (deterministic)
-        return a.id.compareTo(b.id) < 0 ? a : b;
-      });
-      
-      print('Found existing account: ${account.name} (${account.id}) from ${matchingAccounts.length} matches');
+    } catch (_) {
+      // No account found
+    }
 
+    if (account != null) {
       // Ensure account type is correct
       final correctType = accountType == 'MPESA'
           ? AccountType.Mpesa
           : AccountType.Bank;
+          
+      bool needsUpdate = false;
+      Account updatedAccount = account;
+
       if (account.type != correctType) {
-        print('Updating account type from ${account.type} to $correctType');
-        final updatedAccount = account.copyWith(type: correctType);
-        accountsBox.put(account.id, updatedAccount);
-        account = updatedAccount;
-      }
-
-      // Ensure account name is correct (should be standardized)
-      if (account.name != standardizedName) {
-        print('Updating account name from ${account.name} to $standardizedName');
-        final updatedAccount = account.copyWith(name: standardizedName);
-        accountsBox.put(account.id, updatedAccount);
-        account = updatedAccount;
-      }
-
-      // Update sender address if different
-      if (account.senderAddress.toUpperCase() != address.toUpperCase()) {
-        print(
-          'Updating sender address from ${account.senderAddress} to $address',
-        );
-        final updatedAccount = account.copyWith(senderAddress: address);
-        accountsBox.put(account.id, updatedAccount);
-        account = updatedAccount;
+        updatedAccount = updatedAccount.copyWith(type: correctType);
+        needsUpdate = true;
       }
       
-      // Merge any duplicate accounts with the same name BEFORE processing transaction
-      await _mergeDuplicateAccounts(accountsBox, account);
+      // Update sender address if we have a more specific one
+      if (account.senderAddress != address) {
+         updatedAccount = updatedAccount.copyWith(senderAddress: address);
+         needsUpdate = true;
+      }
+
+      if (needsUpdate) {
+        accountsBox.put(account.id, updatedAccount);
+        account = updatedAccount;
+      }
     } else {
       // No matching account found, create new one
-      print('No existing account found for $accountType, creating new account');
+      print('Creating new account for $standardizedName');
+      
       final newAccount = Account(
         id: const Uuid().v4(),
         name: standardizedName,
@@ -310,7 +304,6 @@ class SmsReaderService {
       );
       accountsBox.put(newAccount.id, newAccount);
       account = newAccount;
-      print('Created new account: ${account.name} (${account.id})');
     }
 
     // Parse using patterns
@@ -322,15 +315,8 @@ class SmsReaderService {
       accountType,
     );
 
-    // Update account balance if transaction has balance
-    if (transaction != null && transaction.newBalance != null) {
-      final updatedAccount = account.copyWith(
-        balance: transaction.newBalance!,
-        lastUpdated: transaction.date,
-      );
-      accountsBox.put(account.id, updatedAccount);
-    }
-
+    // we don't update balance here, we do it in saveTransactions to be safe and efficient
+    
     return transaction;
   }
 
@@ -386,6 +372,12 @@ class SmsReaderService {
 
     final mpesaBuyPattern = RegExp(
       r'([A-Z0-9]+)\s+confirmed\.?\s*You bought Ksh([\d,]+\.\d{2})\s+of\s+([^.]+?)(?:\s+on\s+[\d/]+\s+at\s+[\d:]+)?\.?\s*New M-PESA balance is Ksh([\d,]+\.\d{2})',
+      caseSensitive: false,
+    );
+    
+    // New regex for simple airtime purchase: "You bought Ksh 20.00 of airtime on..."
+    final mpesaAirtimePattern = RegExp(
+      r'([A-Z0-9]+)\s+Confirmed\.?\s*You\s+bought\s+Ksh([\d,]+\.\d{2})\s+of\s+airtime\s+on\s+[\d/]+\s+at\s+[\d:]+\s+[AP]M\.?\s*New M-PESA balance is Ksh([\d,]+\.\d{2})',
       caseSensitive: false,
     );
 
@@ -495,6 +487,30 @@ class SmsReaderService {
         type: TransactionType.expense,
         category: TransactionCategory.other,
         recipient: agent,
+        originalSms: body,
+        newBalance: balance,
+        date: date,
+        accountId: accountId,
+        reference: reference,
+      );
+    }
+
+
+    
+    // Try simple airtime pattern first
+    match = mpesaAirtimePattern.firstMatch(body);
+    if (match != null) {
+      final reference = match.group(1)!;
+      final amount = parseAmount(match.group(2)!);
+      final balance = parseAmount(match.group(3)!);
+      
+      return Transaction(
+        id: uuid.v4(),
+        title: 'Airtime Purchase',
+        amount: amount,
+        type: TransactionType.expense,
+        category: TransactionCategory.utilities,
+        recipient: 'Safaricom Airtime',
         originalSms: body,
         newBalance: balance,
         date: date,
@@ -707,96 +723,7 @@ class SmsReaderService {
     return null;
   }
 
-  /// Merge duplicate accounts into a primary account
-  /// Migrates all transactions from duplicates to the primary account
-  /// Ensures M-Pesa accounts are named "MPESA" (all caps)
-  Future<void> _mergeDuplicateAccounts(
-    Box<Account> accountsBox,
-    Account primaryAccount,
-  ) async {
-    // Find all accounts with the same name as the primary account
-    final duplicateAccounts = accountsBox.values
-        .where(
-          (acc) =>
-              acc.name == primaryAccount.name && acc.id != primaryAccount.id,
-        )
-        .toList();
 
-    if (duplicateAccounts.isEmpty) return;
-
-    print(
-      'Merging ${duplicateAccounts.length} duplicate accounts into ${primaryAccount.name} (${primaryAccount.id})',
-    );
-
-    // Get transactions box
-    final transactionsBox = _boxManager.getBox<Transaction>(
-      BoxManager.transactionsBoxName,
-      userId,
-    );
-
-    // Migrate all transactions from duplicate accounts to primary account
-    int migratedCount = 0;
-    for (var duplicateAccount in duplicateAccounts) {
-      final duplicateTransactions = transactionsBox.values
-          .where((t) => t.accountId == duplicateAccount.id)
-          .toList();
-
-      for (var transaction in duplicateTransactions) {
-        // Update transaction to use primary account ID
-        final updatedTransaction = transaction.copyWith(
-          accountId: primaryAccount.id,
-        );
-        transactionsBox.put(updatedTransaction.id, updatedTransaction);
-        migratedCount++;
-      }
-
-      // Delete the duplicate account
-      await accountsBox.delete(duplicateAccount.id);
-      print(
-        'Merged and deleted duplicate account: ${duplicateAccount.name} (${duplicateAccount.id})',
-      );
-    }
-
-    print(
-      'Migrated $migratedCount transactions to primary account ${primaryAccount.name}',
-    );
-
-    // Recalculate primary account balance from all transactions
-    final allTransactions = transactionsBox.values
-        .where((t) => t.accountId == primaryAccount.id)
-        .toList();
-
-    // Find the most recent transaction with a balance
-    Transaction? mostRecentWithBalance;
-    for (var transaction in allTransactions) {
-      if (transaction.newBalance != null && transaction.newBalance! > 0) {
-        if (mostRecentWithBalance == null ||
-            transaction.date.isAfter(mostRecentWithBalance.date)) {
-          mostRecentWithBalance = transaction;
-        }
-      }
-    }
-
-    // Update primary account balance and ensure name is "MPESA" for M-Pesa accounts
-    Account updatedAccount = primaryAccount;
-    if (primaryAccount.type == AccountType.Mpesa &&
-        primaryAccount.name != 'MPESA') {
-      updatedAccount = updatedAccount.copyWith(name: 'MPESA');
-      print('Renaming M-Pesa account to MPESA: ${primaryAccount.id}');
-    }
-
-    if (mostRecentWithBalance != null) {
-      updatedAccount = updatedAccount.copyWith(
-        balance: mostRecentWithBalance.newBalance!,
-        lastUpdated: mostRecentWithBalance.date,
-      );
-      print(
-        'Updated primary account balance to ${mostRecentWithBalance.newBalance}',
-      );
-    }
-
-    accountsBox.put(primaryAccount.id, updatedAccount);
-  }
 
   /// Recalculate account balances from all transactions
   void _recalculateBalancesFromTransactions(

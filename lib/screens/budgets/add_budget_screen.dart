@@ -6,7 +6,7 @@ import '../../models/transaction/transaction_model.dart';
 import '../../models/budget/budget_model.dart';
 
 class AddBudgetScreen extends StatefulWidget {
-  final BudgetDetail? budgetToEdit;
+  final Budget? budgetToEdit;
 
   const AddBudgetScreen({
     Key? key,
@@ -34,12 +34,12 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
     super.initState();
     if (_isEditing) {
       final budget = widget.budgetToEdit!;
-      _budgetAmountController = TextEditingController(text: budget.budgetAmount.toStringAsFixed(2));
-      _nameController = TextEditingController(text: budget.name);
-      _notesController = TextEditingController(text: budget.notes ?? '');
-      _selectedCategory = budget.category;
-      _startDate = budget.startDate;
-      _endDate = budget.endDate;
+      _budgetAmountController = TextEditingController(text: budget.limitAmount.toStringAsFixed(2));
+      _nameController = TextEditingController(text: budget.categoryName);
+      _notesController = TextEditingController();
+      _selectedCategory = TransactionCategory.other; // Default, as Budget uses categoryName string
+      _startDate = DateTime(budget.year, budget.month, 1);
+      _endDate = DateTime(budget.year, budget.month + 1, 0); // Last day of month
     } else {
       _budgetAmountController = TextEditingController();
       _nameController = TextEditingController();

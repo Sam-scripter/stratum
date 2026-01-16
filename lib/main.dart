@@ -1,8 +1,9 @@
+// main.dart
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:stratum/firebase_options.dart';
 import 'package:stratum/screens/home/home_screen.dart';
 import 'package:stratum/widgets/enhanced_widgets_demo.dart';
@@ -15,6 +16,8 @@ import 'package:stratum/theme/app_theme.dart';
 import 'package:stratum/models/box_manager.dart';
 import 'package:stratum/services/notification/notification_service.dart';
 import 'package:stratum/services/background/sms_background_service.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,6 +45,7 @@ class StratumApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navigatorKey, // Add global key
       title: 'Stratum - Financial Advisor',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,

@@ -1,8 +1,13 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:hive/hive.dart';
 import '../../models/account/account_model.dart';
 import '../../models/transaction/transaction_model.dart';
+import '../../models/box_manager.dart';
 import 'package:intl/intl.dart';
+import 'package:stratum/main.dart';
+import 'package:stratum/screens/transactions/transaction_detail_screen.dart';
 
 /// Service for sending local notifications when transactions are detected
 class NotificationService {
@@ -109,20 +114,34 @@ class NotificationService {
     );
   }
 
+
+
   /// Handle notification tap - navigate to transaction detail
-  void _onNotificationTapped(NotificationResponse response) {
-    if (response.payload != null) {
-      // The payload contains the transaction ID
-      // We'll use a global navigator key or route to transaction detail
-      // This will be handled by the app's navigation system
-      print('Notification tapped for transaction: ${response.payload}');
+  void _onNotificationTapped(NotificationResponse response) async {
+    if (response.payload != null && navigatorKey.currentState != null) {
+      final transactionId = response.payload!;
+      print('Notification tapped for transaction: $transactionId');
       
-      // TODO: Implement navigation to TransactionDetailScreen
-      // You can use a global navigator key:
-      // navigatorKey.currentState?.pushNamed(
-      //   '/transaction-detail',
-      //   arguments: response.payload,
-      // );
+      try {
+        // We need to fetch the transaction object
+        final userId = FirebaseAuth.instance.currentUser?.uid;
+        if (userId != null) {
+          final boxManager = BoxManager();
+          await boxManager.openAllBoxes(userId);
+          final box = boxManager.getBox<Transaction>(BoxManager.transactionsBoxName, userId);
+          final transaction = box.get(transactionId);
+          
+          if (transaction != null) {
+             navigatorKey.currentState!.push(
+               MaterialPageRoute(
+                 builder: (context) => TransactionDetailScreen(transaction: transaction),
+               ),
+             );
+          }
+        }
+      } catch (e) {
+        print('Error navigating to transaction: $e');
+      }
     }
   }
   

@@ -1,11 +1,10 @@
+// login_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:stratum/screens/auth/signup_screen.dart';
 import 'package:stratum/screens/auth/forgot_password_dialog.dart';
 import 'package:stratum/services/auth/auth_service.dart';
-import 'package:stratum/models/box_manager.dart';
-import 'package:stratum/models/app settings/app_settings.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import '../onboarding/sms_scanning_screen.dart';
 import '../../theme/app_theme.dart';
 import '../../main.dart';

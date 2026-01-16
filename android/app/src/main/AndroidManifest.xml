@@ -47,9 +47,10 @@
 
         <!-- Foreground service for SMS monitoring -->
         <service
-            android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+            android:name="id.flutter.flutter_background_service.BackgroundService"
             android:foregroundServiceType="dataSync"
-            android:exported="false" />
+            android:permission="android.permission.FOREGROUND_SERVICE"
+            android:exported="true" />
 
         <!-- Broadcast receiver for SMS - temporarily disabled due to class not found -->
         <!--

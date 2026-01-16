@@ -1,10 +1,11 @@
+// signup_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:stratum/services/auth/auth_service.dart';
 import 'package:stratum/screens/auth/email_verification_screen.dart';
 import '../../main.dart';
 import '../../theme/app_theme.dart';
-
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({Key? key}) : super(key: key);

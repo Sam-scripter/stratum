@@ -26,9 +26,17 @@ class TransactionsScreen extends StatefulWidget {
 class _TransactionsScreenState extends State<TransactionsScreen> {
   TransactionFilter _selectedFilter = TransactionFilter.all;
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   bool _isSearchVisible = false;
   bool _isLoading = true;
+  bool _isLoadingMore = false;
+  final int _pageSize = 20;
+  
+  // All transactions from DB (sorted)
   List<Transaction> _allTransactions = [];
+  // Currently displayed transactions (subset)
+  List<Transaction> _displayedTransactions = [];
+  
   late BoxManager _boxManager;
   late String _userId;
 
@@ -41,7 +49,15 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     if (widget.initialFilter != null) {
       _selectedFilter = widget.initialFilter!;
     }
+    
+    _scrollController.addListener(_onScroll);
     _loadTransactions();
+  }
+  
+  void _onScroll() {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+      _loadMoreTransactions();
+    }
   }
 
   Future<void> _loadTransactions() async {
@@ -52,15 +68,34 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       _userId,
     );
     
+    // Load and sort all transactions once
     _allTransactions = transactionsBox.values.toList();
     _allTransactions.sort((a, b) => b.date.compareTo(a.date)); // Newest first
+    
+    // Apply initial filter/search and take first page
+    _applyFiltersAndPagination(reset: true);
     
     if (mounted) {
       setState(() => _isLoading = false);
     }
   }
+  
+  Future<void> _loadMoreTransactions() async {
+    if (_isLoadingMore || _displayedTransactions.length >= _getFilteredList().length) return;
+    
+    setState(() => _isLoadingMore = true);
+    
+    // Simulate small delay for smooth UX
+    await Future.delayed(const Duration(milliseconds: 300));
+    
+    if (mounted) {
+      _applyFiltersAndPagination(reset: false);
+      setState(() => _isLoadingMore = false);
+    }
+  }
 
-  List<Transaction> get _filteredTransactions {
+  // Get full filtered list based on current selection
+  List<Transaction> _getFilteredList() {
     var transactions = _allTransactions;
 
     // Apply filter
@@ -86,9 +121,24 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                t.categoryName.toLowerCase().contains(searchQuery);
       }).toList();
     }
-
+    
     return transactions;
   }
+
+  void _applyFiltersAndPagination({bool reset = false}) {
+    final filtered = _getFilteredList();
+    
+    if (reset) {
+      _displayedTransactions = filtered.take(_pageSize).toList();
+    } else {
+      final currentLen = _displayedTransactions.length;
+      final nextChunk = filtered.skip(currentLen).take(_pageSize).toList();
+      _displayedTransactions.addAll(nextChunk);
+    }
+    setState(() {});
+  }
+
+  List<Transaction> get _filteredTransactions => _displayedTransactions;
 
   Map<String, List<Transaction>> get _groupedTransactions {
     final grouped = <String, List<Transaction>>{};
@@ -96,7 +146,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     final today = DateTime(now.year, now.month, now.day);
     final yesterday = today.subtract(const Duration(days: 1));
 
-    for (final transaction in _filteredTransactions) {
+    for (final transaction in _displayedTransactions) {
       final transactionDate = DateTime(
         transaction.date.year,
         transaction.date.month,
@@ -114,12 +164,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
       grouped.putIfAbsent(sectionTitle, () => []).add(transaction);
     }
-
-    // Sort transactions within each group by time (most recent first)
-    grouped.forEach((key, value) {
-      value.sort((a, b) => b.date.compareTo(a.date));
-    });
-
     return grouped;
   }
 
@@ -139,6 +183,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -182,6 +227,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         ],
       ),
       body: SingleChildScrollView(
+            controller: _scrollController,
             padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -272,7 +318,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     padding: EdgeInsets.zero,
                     child: TextField(
                       controller: _searchController,
-                      onChanged: (_) => setState(() {}),
+                      onChanged: (_) => _applyFiltersAndPagination(reset: true),
                       style: GoogleFonts.poppins(
                         color: Colors.white,
                         fontSize: 15,
@@ -294,9 +340,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                                   color: Colors.white.withOpacity(0.6),
                                 ),
                                 onPressed: () {
-                                  setState(() {
-                                    _searchController.clear();
-                                  });
+                                  _searchController.clear();
+                                  _applyFiltersAndPagination(reset: true);
                                 },
                               )
                             : null,
@@ -315,7 +360,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                       child: CircularProgressIndicator(),
                     ),
                   )
-                else if (_filteredTransactions.isEmpty)
+                else if (_displayedTransactions.isEmpty)
                   Center(
                     child: Padding(
                       padding: const EdgeInsets.all(AppTheme.spacing48),
@@ -365,6 +410,19 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                       ],
                     );
                   }),
+                  
+                // Loading more indicator
+                if (_isLoadingMore)
+                  const Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Center(
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -410,6 +468,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         setState(() {
           _selectedFilter = filter;
         });
+        _applyFiltersAndPagination(reset: true);
       },
       child: Container(
         padding: const EdgeInsets.symmetric(

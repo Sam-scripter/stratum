@@ -19,7 +19,7 @@ class SyncService {
   Future<void> syncAccounts() async {
     try {
       var connectivityResult = await (Connectivity().checkConnectivity());
-      if (connectivityResult == ConnectivityResult.none) return;
+      if (connectivityResult.contains(ConnectivityResult.none)) return;
 
       await _boxManager.openAllBoxes(userId);
       final accountsBox = _boxManager.getBox<Account>(BoxManager.accountsBoxName, userId);
@@ -49,10 +49,23 @@ class SyncService {
 
         if (localAccount != null) {
           // CONFLICT RESOLUTION
-          if (cloudLastUpdated.isAfter(localAccount.lastUpdated)) {
-            // Cloud is newer -> Overwrite Local
+          // Ensure we compare using consistent UTC
+          final cloudUtc = cloudLastUpdated.toUtc();
+          final localUtc = localAccount.lastUpdated.toUtc();
+          final nowUtc = DateTime.now().toUtc();
+          
+          // Safety Check: If cloud timestamp is significantly in the future (e.g. > 10 mins), 
+          // likely bad data. Ignore it or prefer Local if Local is reasonable.
+          final isCloudFuture = cloudUtc.isAfter(nowUtc.add(const Duration(minutes: 10)));
+          
+          if (isCloudFuture) {
+             print('SyncService: Cloud timestamp for ${cloudAccount.name} is in future ($cloudUtc). Ignoring cloud update.');
+             // Force push local to fix cloud
+             await pushAccountToCloud(localAccount);
+          } else if (cloudUtc.isAfter(localUtc)) {
+            // Cloud is genuinely newer -> Overwrite Local
             await accountsBox.put(accountId, cloudAccount);
-          } else if (localAccount.lastUpdated.isAfter(cloudLastUpdated)) {
+          } else if (localUtc.isAfter(cloudUtc)) {
             // Local is newer -> Push to Cloud
             await pushAccountToCloud(localAccount);
           }

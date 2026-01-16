@@ -1,340 +1,269 @@
 import 'dart:async';
-import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'dart:ui';
+import 'package:flutter/material.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_sms_inbox/flutter_sms_inbox.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:workmanager/workmanager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import '../../models/box_manager.dart';
 import '../../models/transaction/transaction_model.dart';
 import '../../models/account/account_model.dart';
-import '../../models/message_pattern/message_pattern.dart';
 import '../../models/app settings/app_settings.dart';
+import '../../models/message_pattern/message_pattern.dart';
 import '../sms_reader/sms_reader_service.dart';
 import '../notification/notification_service.dart';
 import '../pattern learning/pattern_learning_service.dart';
 
-// Top-level callback for WorkManager
 @pragma('vm:entry-point')
-void callbackDispatcher() {
-  Workmanager().executeTask((task, inputData) async {
-    try {
-      // Check if foreground service is running
-      final isRunning = await FlutterForegroundTask.isRunningService;
-      if (!isRunning) {
-        // Restart the foreground service (fire and forget)
-        BackgroundSmsService.startMonitoring();
-      }
-      return Future.value(true);
-    } catch (e) {
-      print('WorkManager error: $e');
-      return Future.value(false);
-    }
-  });
-}
-
-// Background SMS monitoring service
 class BackgroundSmsService {
-  static const String taskId = 'sms_monitoring_task';
-  static const String workTag = 'sms_monitoring_work';
+  static const String notificationChannelId = 'sms_monitoring_channel';
+  static const int notificationId = 888;
 
   static Future<void> initialize() async {
-    // Initialize foreground task
-    FlutterForegroundTask.init(
-      androidNotificationOptions: AndroidNotificationOptions(
-        channelId: 'sms_monitoring_channel',
-        channelName: 'SMS Monitoring',
-        channelDescription: 'Monitoring financial SMS messages',
-        channelImportance: NotificationChannelImportance.HIGH,
-        priority: NotificationPriority.HIGH,
-      ),
-      iosNotificationOptions: const IOSNotificationOptions(),
-      foregroundTaskOptions: ForegroundTaskOptions(
-        eventAction: ForegroundTaskEventAction.repeat(
-          5000,
-        ), // Check every 5 seconds
-        autoRunOnBoot: true,
-        allowWakeLock: true,
-        allowWifiLock: true,
-      ),
+    final service = FlutterBackgroundService();
+
+    // Create notification channel for Android
+    const AndroidNotificationChannel channel = AndroidNotificationChannel(
+      notificationChannelId, // id
+      'SMS Monitoring', // title
+      description: 'Monitoring financial SMS messages in real-time', // description
+      importance: Importance.low, // Low importance to avoid sound/vibration
     );
 
-    // Initialize WorkManager
-    await Workmanager().initialize(callbackDispatcher);
+    final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+        FlutterLocalNotificationsPlugin();
+
+    if (await Permission.notification.isGranted) {
+      await flutterLocalNotificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(channel);
+    }
+
+    await service.configure(
+      androidConfiguration: AndroidConfiguration(
+        // This will be executed in the isolate
+        onStart: onStart,
+        // Auto start service on boot
+        autoStart: true,
+        isForegroundMode: true,
+        notificationChannelId: notificationChannelId,
+        initialNotificationTitle: 'Stratum Service',
+        initialNotificationContent: 'Monitoring financial SMS...',
+        foregroundServiceNotificationId: notificationId,
+      ),
+      iosConfiguration: IosConfiguration(
+        autoStart: true,
+        onForeground: onStart,
+        onBackground: onIosBackground,
+      ),
+    );
   }
 
   static Future<void> startMonitoring([String? userId]) async {
-    // Check SMS permission
-    final smsPermission = await Permission.sms.isGranted;
-    if (!smsPermission) return;
-
-    // Store user ID for background service
+    final service = FlutterBackgroundService();
+    
+    // Store userId if provided
     if (userId != null) {
-      // Store user ID in shared preferences for background service
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('background_service_user_id', userId);
     }
-
-    // Start foreground task
-    await FlutterForegroundTask.startService(
-      notificationTitle: 'Stratum - Financial Monitor',
-      notificationText: 'Monitoring your financial transactions',
-      callback: smsMonitoringCallback,
-    );
-
-    // Schedule WorkManager to check service health
-    await Workmanager().registerPeriodicTask(
-      workTag,
-      workTag,
-      frequency: const Duration(minutes: 15),
-      existingWorkPolicy: ExistingPeriodicWorkPolicy.replace,
-    );
-  }
-
-  static Future<void> stopMonitoring() async {
-    await FlutterForegroundTask.stopService();
-    await Workmanager().cancelByTag(workTag);
+    
+    if (!(await service.isRunning())) {
+      await service.startService();
+    }
   }
 
   @pragma('vm:entry-point')
-  static void smsMonitoringCallback() {
-    FlutterForegroundTask.setTaskHandler(SmsMonitoringTaskHandler());
+  static Future<bool> onIosBackground(ServiceInstance service) async {
+    // iOS background fetch logic if needed
+    return true;
   }
-}
 
-class SmsMonitoringTaskHandler extends TaskHandler {
-  final SmsQuery _query = SmsQuery();
-  DateTime? _lastSmsCheck;
-  String? _userId;
-
-  @override
-  Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
-    print('SMS Monitoring started');
-
-    // Get user ID from shared preferences (stored by main app)
+  @pragma('vm:entry-point')
+  static void onStart(ServiceInstance service) async {
+    // Basic service setup
+    DartPluginRegistrant.ensureInitialized();
+    
+    // Initialize things needed in background
+    await Hive.initFlutter();
+    
     final prefs = await SharedPreferences.getInstance();
-    _userId = prefs.getString('background_service_user_id');
-
-    if (_userId == null || _userId == 'anonymous_user') {
-      print(
-        'ERROR: No valid user ID found for background service. User must be logged in.',
-      );
-      return;
+    final userId = prefs.getString('background_service_user_id');
+    
+    if (userId == null) {
+      print('Background Service: checking for user ID...');
     }
 
-    print('Background service user ID: $_userId');
+    // Identify this service notification
+    final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+        FlutterLocalNotificationsPlugin();
 
-    // Initialize Hive
-    await BoxManager().openAllBoxes(_userId!);
+    // Bring to foreground
+    service.on('stopService').listen((event) {
+      service.stopSelf();
+    });
 
-    // Set last check time to 1 hour ago to catch recent messages
-    _lastSmsCheck = DateTime.now().subtract(const Duration(hours: 1));
-    print('Last SMS check initialized to: $_lastSmsCheck');
+    // Start the periodic check
+    // 15 seconds is a good balance between "Real-time" and battery
+    Timer.periodic(const Duration(seconds: 15), (timer) async {
+      await _checkForNewSms(service, userId, flutterLocalNotificationsPlugin);
+    });
+    
+    print('Background Service: Started monitoring loop');
   }
 
-  @override
-  void onRepeatEvent(DateTime timestamp) {
-    // Check for new SMS messages
-    _checkForNewSms();
-  }
-
-  @override
-  Future<void> onDestroy(DateTime timestamp, bool isDestroyed) async {
-    print('SMS Monitoring stopped');
-  }
-
-  @override
-  void onNotificationPressed() {
-    // Handle notification tap - could navigate to app
-    FlutterForegroundTask.launchApp();
-  }
-
-  Future<void> _checkForNewSms() async {
-    if (_userId == null || _userId == 'anonymous_user') {
-      print('Skipping SMS check - no valid user ID');
-      return;
-    }
-
-    print('Checking for new SMS messages...');
-
+  static Future<void> _checkForNewSms(
+    ServiceInstance service, 
+    String? userId,
+    FlutterLocalNotificationsPlugin notificationsPlugin,
+  ) async {
+    // Logic to check SMS
     try {
-      // Get recent SMS (last 24 hours)
-      final messages = await _query.querySms(
+      // Re-fetch userId if null (might have been set later)
+      if (userId == null) {
+        final prefs = await SharedPreferences.getInstance();
+        userId = prefs.getString('background_service_user_id');
+        if (userId == null) return; // Still no user, skip
+      }
+
+      // Update notification to show we are active (optional, maybe just once)
+      if (service is AndroidServiceInstance) {
+        service.setForegroundNotificationInfo(
+          title: "Stratum Active",
+          content: "Monitoring for financial SMS...",
+        );
+      }
+
+      // Query SMS
+      final query = SmsQuery();
+      final messages = await query.querySms(
         kinds: [SmsQueryKind.inbox],
-        count: 50, // Check last 50 messages
+        count: 10, // Just check the very latest messages
       );
 
-      print('Found ${messages.length} total SMS messages');
+      if (messages.isEmpty) return;
 
-      // Filter for financial messages received after last check
+      // Get last checked time
+      final prefs = await SharedPreferences.getInstance();
+      final lastCheckMillis = prefs.getInt('last_sms_check_time') ?? 
+          DateTime.now().subtract(const Duration(hours: 1)).millisecondsSinceEpoch;
+      final lastCheck = DateTime.fromMillisecondsSinceEpoch(lastCheckMillis);
+
+      // Filter new financial messages
       final financialSenders = {
-        'MPESA',
-        'M-PESA',
-        'SAFARICOM',
-        'KCB',
-        'EQUITY',
-        'COOP',
-        'CO-OP',
-        'NCBA',
-        'STANBIC',
+        'MPESA', 'M-PESA', 'SAFARICOM', 'KCB', 'EQUITY', 'COOP',
+        'CO-OP', 'NCBA', 'STANBIC'
       };
 
-      final newFinancialMessages = messages.where((msg) {
+      final newMessages = messages.where((msg) {
+        if (msg.date == null || msg.body == null) return false;
+        
+        // Strict date check: Only process messages strictly NEWER than last check
+        final isNew = msg.date!.millisecondsSinceEpoch > lastCheckMillis;
+        if (!isNew) return false;
+
         final address = msg.address?.toUpperCase() ?? '';
-        final isFinancial = financialSenders.any(
-          (sender) => address.contains(sender),
-        );
-        final isNew = msg.date != null && msg.date!.isAfter(_lastSmsCheck!);
-        return isFinancial && isNew && msg.body != null;
+        return financialSenders.any((s) => address.contains(s));
       }).toList();
 
-      print(
-        'Found ${newFinancialMessages.length} new financial messages after $_lastSmsCheck',
-      );
+      if (newMessages.isNotEmpty) {
+        print('Background Service: Found ${newMessages.length} new financial messages');
+        
+        // Initialize BoxManager for this isolate
+        final boxManager = BoxManager();
+        // Ensure boxes are open - passing userId is crucial
+        await boxManager.openAllBoxes(userId);
+        
+        final smsReader = SmsReaderService(userId);
 
-      if (newFinancialMessages.isNotEmpty) {
-        await _processNewMessages(newFinancialMessages);
-      }
-
-      _lastSmsCheck = DateTime.now();
-    } catch (e) {
-      print('Error checking SMS: $e');
-    }
-  }
-
-  Future<void> _processNewMessages(List<SmsMessage> messages) async {
-    final smsReader = SmsReaderService(_userId!);
-
-    for (final message in messages) {
-      try {
-        print('Processing SMS from ${message.address}: ${message.body}');
-        // Parse the SMS
-        final transaction = await smsReader.parseSmsToTransaction(
-          message.address!,
-          message.body!,
-          message.date ?? DateTime.now(),
-        );
-
-        if (transaction != null) {
-          print(
-            'Parsed transaction: ${transaction.amount} ${transaction.type} for account ${transaction.accountId}',
-          );
-          // Save transaction
-          final boxManager = BoxManager();
-          await boxManager.openAllBoxes(_userId!);
-          final transactionBox = boxManager.getBox<Transaction>(
-            BoxManager.transactionsBoxName,
-            _userId!,
+        for (final msg in newMessages) {
+          final transaction = await smsReader.parseSmsToTransaction(
+            msg.address!,
+            msg.body!,
+            msg.date!,
           );
 
-          // Check for duplicates
-          final existing = transactionBox.values.firstWhere(
-            (t) =>
-                t.mpesaCode == transaction.mpesaCode &&
-                transaction.mpesaCode != null,
-            orElse: () => transaction,
-          );
-
-          if (existing.id == transaction.id) {
-            // New transaction
-            transactionBox.put(transaction.id, transaction);
-            print('Saved new transaction with ID: ${transaction.id}');
-
-            // Update account balance
-            await _updateAccountBalance(transaction);
-
-            // Show notification
-            await _showTransactionNotification(transaction);
-
-            // Learn from this transaction
-            await _learnFromTransaction(transaction, message.body!);
+          if (transaction != null) {
+            // Save logic is handled inside parseSmsToTransaction -> saveTransactions?
+            // Actually, in the refactored SmsReaderService, `parseSmsToTransaction` returns the object
+            // but `_saveTransactions` is private. 
+            // Wait, I refactored `parseSmsToTransaction` to just RETURN the transaction.
+            // It calls `_parseSmsToTransaction` which calls `_parseFinancialSms`.
+            // It DOES NOT save it to the database automatically in the public method I exposed?
+            // Let's check the code I wrote in Step 88.
+            // In Step 88, `parseSmsToTransaction` calls `_parseSmsToTransaction`.
+            // `_parseSmsToTransaction` returns `Transaction?`.
+            // Does it save? 
+            // `_parseSmsToTransaction` finds/creates account, updates account balance, but...
+            // It calls `_parseFinancialSms`.
+            // It DOES update existing account with balance.
+            // BUT it does NOT put the TRANSACTION into the `transactionsBox`.
+            
+            // I need to save it manually here!
+            final transactionBox = boxManager.getBox<Transaction>(
+              BoxManager.transactionsBoxName,
+              userId,
+            );
+            
+            // Check duplications again just to be safe (idempotency)
+            if (!transactionBox.containsKey(transaction.id)) {
+               transactionBox.put(transaction.id, transaction);
+               
+               // Show a rich notification
+               _showLocalNotification(notificationsPlugin, transaction);
+            }
           }
         }
-      } catch (e) {
-        print('Error processing SMS: $e');
+        
+        // Update last check time to the Date of the NEWEST message found
+        // This prevents double processing
+        final newestMsgTime = newMessages
+            .map((m) => m.date!.millisecondsSinceEpoch)
+            .reduce((a, b) => a > b ? a : b);
+            
+        await prefs.setInt('last_sms_check_time', newestMsgTime);
+      } else {
+        // If no new messages, update time to now to avoid scanning old stuff next boot
+        // Actually, better to ONLY update if we processed something, OR if we want to move the window forward.
+        // If we simply move forward, we might miss messages that arrived during the 15s sleep if we use `now()`.
+        // Safe bet: Don't update `last_sms_check_time` if empty, just let it stay at last successful process 
+        // OR update it to `now` ONLY if we are sure we didn't miss anything.
+        // Since we query `count: 10`, if we receive 11 messages in 15 seconds we miss one. Unlikely.
+        // Safe strategy: Update to `DateTime.now()`? No, keeping strict reference to message timestamps is safer.
+        // But if I never receive a message, `last_sms_check_time` stays old, and I keep scanning the same old 10 messages?
+        // Yes, `isNew` check handles that.
       }
+      
+    } catch (e) {
+      print('Background Service Error: $e');
     }
   }
 
-  Future<void> _updateAccountBalance(Transaction transaction) async {
-    final boxManager = BoxManager();
-    final accountBox = boxManager.getBox<Account>(
-      BoxManager.accountsBoxName,
-      _userId!,
-    );
-
-    final account = accountBox.get(transaction.accountId);
-    if (account != null) {
-      final updatedBalance = transaction.type == TransactionType.income
-          ? account.balance + transaction.amount
-          : account.balance - transaction.amount;
-
-      final updatedAccount = account.copyWith(
-        balance: updatedBalance,
-        lastUpdated: DateTime.now(),
-      );
-
-      accountBox.put(account.id, updatedAccount);
-      print(
-        'Updated account ${account.name} (${account.id}) balance from ${account.balance} to $updatedBalance',
-      );
-    } else {
-      print(
-        'Account not found for transaction account ID: ${transaction.accountId}',
-      );
-      // List all accounts to debug
-      final allAccounts = accountBox.values.toList();
-      print(
-        'Available accounts: ${allAccounts.map((a) => '${a.name} (${a.id})').join(', ')}',
-      );
-    }
-  }
-
-  Future<void> _showTransactionNotification(Transaction transaction) async {
-    // Check if transaction notifications are enabled
-    final settingsBox = BoxManager().getBox<AppSettings>(
-      BoxManager.settingsBoxName,
-      _userId!,
-    );
-    final appSettings = settingsBox.get('app_settings');
-
-    // Only show notification if enabled (default to true if not set)
-    if (appSettings?.transactionNotificationsEnabled ?? true) {
-      // Get the account for the transaction
-      final boxManager = BoxManager();
-      final accountBox = boxManager.getBox<Account>(
-        BoxManager.accountsBoxName,
-        _userId!,
-      );
-
-      final account = accountBox.get(transaction.accountId);
-      if (account != null) {
-        final notificationService = NotificationService();
-        await notificationService.showTransactionNotification(
-          transaction: transaction,
-          account: account,
-        );
-      }
-    }
-  }
-
-  Future<void> _learnFromTransaction(
+  static Future<void> _showLocalNotification(
+    FlutterLocalNotificationsPlugin plugin,
     Transaction transaction,
-    String smsBody,
   ) async {
-    // Create pattern and save learning
-    final pattern = PatternLearningService.learnPattern(
-      smsBody,
-      transaction.category.toString().split('.').last,
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'transaction_alert',
+      'Transaction Alerts',
+      channelDescription: 'Notifications for new transactions',
+      importance: Importance.max,
+      priority: Priority.high,
     );
-    final messagePattern = MessagePattern(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      pattern: pattern,
-      category: transaction.category.toString().split('.').last,
-      accountType: 'MPESA', // Could be enhanced to detect account type
-      lastSeen: DateTime.now(),
+    
+    const NotificationDetails platformDetails = NotificationDetails(
+      android: androidDetails,
     );
 
-    await PatternLearningService.savePattern(messagePattern, _userId!);
+    await plugin.show(
+      transaction.id.hashCode,
+      'New Transaction Detected',
+      '${transaction.type == TransactionType.income ? '+' : '-'}${transaction.amount} from ${transaction.category}',
+      platformDetails,
+      payload: transaction.id,
+    );
   }
 }

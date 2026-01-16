@@ -1,7 +1,8 @@
+// splash_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:stratum/services/auth/auth_service.dart';
-import '../auth/login_screen.dart';
 import '../onboarding/welcome_screen.dart';
 import '../onboarding/sms_scanning_screen.dart';
 import '../../main.dart';

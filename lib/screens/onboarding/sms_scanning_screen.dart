@@ -1,3 +1,5 @@
+//sms_scanning_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -11,8 +13,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/background/sms_background_service.dart';
-import '../../models/account/account_model.dart';
-import '../../models/transaction/transaction_model.dart';
 import 'package:hive/hive.dart';
 
 enum ScanningState { requestPermission, scanning, processing, complete }
