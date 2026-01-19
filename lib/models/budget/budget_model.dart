@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import '../transaction/transaction_model.dart';
 
 part 'budget_model.g.dart';
 
@@ -58,6 +59,45 @@ class Budget extends HiveObject {
       month: month ?? this.month,
       year: year ?? this.year,
       colorValue: colorValue ?? this.colorValue,
+    );
+  }
+}
+
+/// Helper model for UI display
+class BudgetDetail {
+  final String id;
+  final String name;
+  final TransactionCategory category;
+  final double budgetAmount;
+  final double spentAmount;
+  final DateTime startDate;
+  final DateTime endDate;
+  final String? notes;
+
+  BudgetDetail({
+    required this.id,
+    required this.name,
+    required this.category,
+    required this.budgetAmount,
+    required this.spentAmount,
+    required this.startDate,
+    required this.endDate,
+    this.notes,
+  });
+
+  double get remaining => budgetAmount - spentAmount;
+  double get percentage => budgetAmount > 0 ? spentAmount / budgetAmount : 0.0;
+  bool get isOverBudget => spentAmount > budgetAmount;
+
+  Budget toBudget() {
+    return Budget(
+      id: id,
+      categoryName: name,
+      limitAmount: budgetAmount,
+      spentAmount: spentAmount,
+      month: startDate.month,
+      year: startDate.year,
+      colorValue: 0xFFD4AF37, // Default to Gold if lost
     );
   }
 }

@@ -66,7 +66,7 @@ class BudgetDetailScreen extends StatelessWidget {
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (context) => AddBudgetScreen(
-                    budgetToEdit: budget,
+                    budgetToEdit: budget.toBudget(),
                   ),
                 ),
               );
@@ -426,7 +426,7 @@ class BudgetDetailScreen extends StatelessWidget {
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (context) => AddBudgetScreen(
-                            budgetToEdit: budget,
+                            budgetToEdit: budget.toBudget(),
                           ),
                         ),
                       );

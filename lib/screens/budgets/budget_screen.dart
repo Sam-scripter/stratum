@@ -166,7 +166,7 @@ class _BudgetScreenState extends State<BudgetScreen> with SingleTickerProviderSt
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                 Icon(IconData(goal.iconCodePoint, fontFamily: 'MaterialIcons'), size: 40, color: Color(goal.colorValue)),
+                 Icon(_getIconFromCodePoint(goal.iconCodePoint), size: 40, color: Color(goal.colorValue)),
                  SizedBox(height: 8),
                  Text(goal.name, style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
                  SizedBox(height: 4),
@@ -307,5 +307,19 @@ class _BudgetScreenState extends State<BudgetScreen> with SingleTickerProviderSt
          ],
        )
      );
+  }
+  IconData _getIconFromCodePoint(int codePoint) {
+    if (codePoint == Icons.savings.codePoint) return Icons.savings;
+    if (codePoint == Icons.home.codePoint) return Icons.home;
+    if (codePoint == Icons.directions_car.codePoint) return Icons.directions_car;
+    if (codePoint == Icons.flight.codePoint) return Icons.flight;
+    if (codePoint == Icons.school.codePoint) return Icons.school;
+    if (codePoint == Icons.shopping_bag.codePoint) return Icons.shopping_bag;
+    if (codePoint == Icons.medical_services.codePoint) return Icons.medical_services;
+    if (codePoint == Icons.restaurant.codePoint) return Icons.restaurant;
+    if (codePoint == Icons.devices.codePoint) return Icons.devices;
+    
+    // Fallback
+    return Icons.savings;
   }
 }
