@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:hive/hive.dart';
 import '../../theme/app_theme.dart';
 import '../../models/transaction/transaction_model.dart';
 import '../../models/box_manager.dart';
@@ -133,12 +134,12 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       _userId,
     );
 
-    // Update transaction
+    // Update current transaction
     final updated = Transaction(
       id: transaction.id,
       title: transaction.title,
       amount: transaction.amount,
-      type: transaction.type,
+      type: transaction.type, // Maintain current type
       category: newCategory,
       date: transaction.date,
       description: transaction.description,
@@ -156,7 +157,8 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     // Learn this pattern if we have original SMS
     if (transaction.originalSms != null &&
         transaction.originalSms!.isNotEmpty) {
-      final pattern = PatternLearningService.learnPattern(
+      // ... (existing pattern learning logic)
+       final pattern = PatternLearningService.learnPattern(
         transaction.originalSms!,
         PatternLearningService.categoryToString(newCategory),
       );
@@ -202,11 +204,148 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Category updated and learned!'),
+      const SnackBar(
+        content: Text('Category updated and learned!'),
         backgroundColor: Colors.green,
       ),
     );
+    
+    // Check for similar transactions (Retroactive Update)
+    if (transaction.recipient != null && transaction.recipient!.isNotEmpty) {
+      _checkForSimilarTransactions(newCategory, transactionsBox);
+    }
+  }
+
+  Future<void> _checkForSimilarTransactions(
+      TransactionCategory newCategory, Box<Transaction> box) async {
+    final recipient = transaction.recipient!;
+    
+    // Find matching transactions (exclude current one)
+    final similar = box.values.where((t) => 
+      t.id != transaction.id && 
+      t.recipient == recipient && 
+      t.category != newCategory // Only ones needing update
+    ).toList();
+
+    if (similar.isNotEmpty) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF1D1E33),
+          title: Text('Update Similar Transactions?', style: GoogleFonts.poppins(color: Colors.white)),
+          content: Text(
+            'We found ${similar.length} other transactions with recipient "$recipient".\n\nDo you want to update them to "${_getCategoryName(newCategory)}" as well?',
+            style: GoogleFonts.poppins(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('No, just this one'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text('Yes, update all', style: TextStyle(color: AppTheme.accentGreen)),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm == true) {
+        int count = 0;
+        for (final t in similar) {
+          final updatedSim = Transaction(
+            id: t.id,
+            title: t.title,
+            amount: t.amount,
+            type: t.type,
+            category: newCategory, // Update category
+            date: t.date,
+            description: t.description,
+            recipient: t.recipient,
+            mpesaCode: t.mpesaCode,
+            isRecurring: t.isRecurring,
+            accountId: t.accountId,
+            originalSms: t.originalSms,
+            newBalance: t.newBalance,
+            reference: t.reference,
+          );
+          box.put(updatedSim.id, updatedSim);
+          count++;
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$count transactions updated!'),
+            backgroundColor: AppTheme.accentGreen,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _toggleTransactionType() async {
+    final newType = transaction.type == TransactionType.income 
+        ? TransactionType.expense 
+        : TransactionType.income;
+    
+    // Default category for new type
+    final newCategory = newType == TransactionType.income 
+        ? TransactionCategory.other // or salary
+        : TransactionCategory.other;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1D1E33),
+        title: Text('Switch to ${newType == TransactionType.income ? "Income" : "Expense"}?', style: GoogleFonts.poppins(color: Colors.white)),
+        content: Text(
+          'This will change the transaction type and reset its category.',
+          style: GoogleFonts.poppins(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Switch'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    await _boxManager.openAllBoxes(_userId);
+    final transactionsBox = _boxManager.getBox<Transaction>(
+      BoxManager.transactionsBoxName,
+      _userId,
+    );
+
+    final updated = Transaction(
+      id: transaction.id,
+      title: transaction.title,
+      amount: transaction.amount,
+      type: newType, // new type
+      category: newCategory, // reset category
+      date: transaction.date,
+      description: transaction.description,
+      recipient: transaction.recipient,
+      mpesaCode: transaction.mpesaCode,
+      isRecurring: transaction.isRecurring,
+      accountId: transaction.accountId,
+      originalSms: transaction.originalSms,
+      newBalance: transaction.newBalance,
+      reference: transaction.reference,
+    );
+
+    transactionsBox.put(updated.id, updated);
+    
+    setState(() {
+      transaction = updated;
+      _hasChanges = true;
+    });
   }
 
   Future<void> _toggleRecurring() async {
@@ -296,6 +435,11 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.swap_horiz, color: AppTheme.primaryGold),
+            onPressed: _toggleTransactionType,
+            tooltip: 'Switch Income/Expense',
+          ),
+          IconButton(
             icon: const Icon(Icons.delete_outline, color: Colors.red),
             onPressed: _deleteTransaction,
           ),
@@ -382,15 +526,18 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
             const SizedBox(height: 15),
 
             // Income Categories
+            if (isIncome)
             _buildCategorySection(
               'Income Categories',
               incomeCategories,
               AppTheme.accentGreen,
             ),
 
+            if (isIncome)
             const SizedBox(height: 20),
 
             // Expense Categories
+            if (!isIncome)
             _buildCategorySection(
               'Expense Categories',
               expenseCategories,

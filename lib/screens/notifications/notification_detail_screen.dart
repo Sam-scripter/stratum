@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_widgets.dart';
-import 'notifications_screen.dart';
+import '../../models/notification/notification_model.dart';
+import '../../models/box_manager.dart';
+import '../../models/transaction/transaction_model.dart';
+import '../transactions/transaction_detail_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class NotificationDetailScreen extends StatelessWidget {
-  final NotificationItem notification;
+  final NotificationModel notification;
   final VoidCallback? onMarkAsRead;
 
   const NotificationDetailScreen({
@@ -21,6 +25,21 @@ class NotificationDetailScreen extends StatelessWidget {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         onMarkAsRead!();
       });
+    }
+
+    final isTransaction = notification.transactionId != null;
+    final typeName = isTransaction ? 'Transaction' : 'System';
+    final icon = isTransaction ? Icons.account_balance_wallet : Icons.info_outline;
+    
+    // Determine color
+    Color iconColor = AppTheme.textGray;
+    if (isTransaction) {
+       iconColor = AppTheme.accentBlue;
+       if (notification.body.contains('+')) {
+         iconColor = AppTheme.accentGreen;
+       }
+    } else {
+      iconColor = AppTheme.primaryGold;
     }
 
     return Scaffold(
@@ -51,6 +70,7 @@ class NotificationDetailScreen extends StatelessWidget {
             },
             tooltip: notification.isRead ? 'Mark as unread' : 'Mark as read',
           ),
+          /*
           PopupMenuButton(
             icon: Icon(Icons.more_vert, color: AppTheme.primaryGold),
             color: AppTheme.surfaceGray,
@@ -76,6 +96,7 @@ class NotificationDetailScreen extends StatelessWidget {
               ),
             ],
           ),
+          */
         ],
       ),
       body: SingleChildScrollView(
@@ -97,19 +118,19 @@ class NotificationDetailScreen extends StatelessWidget {
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: [
-                              notification.iconColor.withOpacity(0.3),
-                              notification.iconColor.withOpacity(0.1),
+                              iconColor.withOpacity(0.3),
+                              iconColor.withOpacity(0.1),
                             ],
                           ),
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: notification.iconColor.withOpacity(0.5),
+                            color: iconColor.withOpacity(0.5),
                             width: 2,
                           ),
                         ),
                         child: Icon(
-                          notification.icon,
-                          color: notification.iconColor,
+                          icon,
+                          color: iconColor,
                           size: 40,
                         ),
                       ),
@@ -156,19 +177,19 @@ class NotificationDetailScreen extends StatelessWidget {
                       vertical: AppTheme.spacing8,
                     ),
                     decoration: BoxDecoration(
-                      color: notification.iconColor.withOpacity(0.15),
+                      color: iconColor.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(AppTheme.radius20),
                       border: Border.all(
-                        color: notification.iconColor.withOpacity(0.3),
+                        color: iconColor.withOpacity(0.3),
                         width: 1,
                       ),
                     ),
                     child: Text(
-                      notification.typeName,
+                      typeName,
                       style: GoogleFonts.poppins(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: notification.iconColor,
+                        color: iconColor,
                       ),
                     ),
                   ),
@@ -193,7 +214,7 @@ class NotificationDetailScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: AppTheme.spacing12),
                   Text(
-                    notification.message,
+                    notification.body,
                     style: GoogleFonts.poppins(
                       fontSize: 15,
                       fontWeight: FontWeight.w400,
@@ -219,30 +240,28 @@ class NotificationDetailScreen extends StatelessWidget {
                   const Divider(color: AppTheme.borderGray, height: AppTheme.spacing24),
                   _buildDetailRow(
                     'Type',
-                    notification.typeName,
-                    notification.icon,
-                    color: notification.iconColor,
+                    typeName,
+                    icon,
+                    color: iconColor,
                   ),
-                  if (notification.actionLabel != null) ...[
-                    const Divider(color: AppTheme.borderGray, height: AppTheme.spacing24),
-                    _buildDetailRow(
-                      'Status',
-                      notification.isRead ? 'Read' : 'Unread',
-                      notification.isRead
-                          ? Icons.mark_email_read
-                          : Icons.mark_email_unread,
-                      color: notification.isRead
-                          ? AppTheme.accentGreen
-                          : AppTheme.primaryGold,
-                    ),
-                  ],
+                  const Divider(color: AppTheme.borderGray, height: AppTheme.spacing24),
+                  _buildDetailRow(
+                    'Status',
+                    notification.isRead ? 'Read' : 'Unread',
+                    notification.isRead
+                        ? Icons.mark_email_read
+                        : Icons.mark_email_unread,
+                    color: notification.isRead
+                        ? AppTheme.accentGreen
+                        : AppTheme.primaryGold,
+                  ),
                 ],
               ),
             ),
             const SizedBox(height: AppTheme.spacing24),
 
             // Action Button (if available)
-            if (notification.actionLabel != null && notification.onTap != null)
+            if (isTransaction)
               Container(
                 width: double.infinity,
                 height: 56,
@@ -258,10 +277,7 @@ class NotificationDetailScreen extends StatelessWidget {
                   ],
                 ),
                 child: ElevatedButton(
-                  onPressed: () {
-                    notification.onTap?.call();
-                    Navigator.of(context).pop();
-                  },
+                  onPressed: () => _handleTransactionNavigation(context),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.transparent,
                     shadowColor: Colors.transparent,
@@ -273,7 +289,7 @@ class NotificationDetailScreen extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        notification.actionLabel!,
+                        'View Details',
                         style: GoogleFonts.poppins(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -296,6 +312,38 @@ class NotificationDetailScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  void _handleTransactionNavigation(BuildContext context) async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null || notification.transactionId == null) return;
+    
+    // Using simple box retrieval - assumes boxes are open
+    try {
+      final transactionsBox = BoxManager().getBox<Transaction>(
+        BoxManager.transactionsBoxName,
+        userId,
+      );
+      final transaction = transactionsBox.get(notification.transactionId);
+
+      if (transaction != null) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => TransactionDetailScreen(transaction: transaction),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+             content: Text('Transaction details not found'),
+             backgroundColor: AppTheme.accentRed,
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error navigating: $e');
+    }
   }
 
   Widget _buildDetailRow(

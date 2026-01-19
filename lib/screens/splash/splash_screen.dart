@@ -101,24 +101,17 @@ class _SplashScreenState extends State<SplashScreen>
                     child: ScaleTransition(
                       scale: _scaleAnimation,
                       child: Container(
-                        width: 100,
-                        height: 100,
+                        width: 120,
+                        height: 120,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1A2332),
                           shape: BoxShape.circle,
                           border: Border.all(
                             color: Colors.white.withOpacity(0.1),
                             width: 2,
                           ),
-                        ),
-                        child: Center(
-                          child: Text(
-                            'S',
-                            style: GoogleFonts.poppins(
-                              fontSize: 48,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
+                          image: const DecorationImage(
+                            image: AssetImage('assets/stratum-logo.jpg'),
+                            fit: BoxFit.cover,
                           ),
                         ),
                       ),

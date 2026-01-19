@@ -7,6 +7,7 @@ import 'app settings/app_settings.dart';
 import 'message_pattern/message_pattern.dart';
 import 'budget/budget_model.dart';
 import 'savings/savings_goal_model.dart';
+import 'notification/notification_model.dart';
 
 
 class BoxManager {
@@ -21,6 +22,7 @@ class BoxManager {
   static const String patternsBoxName = 'message_patterns';
   static const String budgetsBoxName = 'budgets';
   static const String savingsGoalsBoxName = 'savings_goals';
+  static const String notificationsBoxName = 'notifications';
 
   // Helper to get the user-scoped box name
   static String _getScopedBoxName(String baseName, String userId) {
@@ -54,7 +56,10 @@ class BoxManager {
 
     // Budgets & Savings (Phase 7)
     if (!Hive.isAdapterRegistered(5)) Hive.registerAdapter(BudgetAdapter()); // ID 5
-    if (!Hive.isAdapterRegistered(10)) Hive.registerAdapter(SavingsGoalAdapter()); // ID 10 (Using 10 to be safe from conflict with 4)
+    if (!Hive.isAdapterRegistered(10)) Hive.registerAdapter(SavingsGoalAdapter()); // ID 10
+    
+    // Notification (Phase 9)
+    if (!Hive.isAdapterRegistered(11)) Hive.registerAdapter(NotificationModelAdapter()); // ID 11
   }
 
   Future<void> openAllBoxes(String userId) async {
@@ -67,6 +72,7 @@ class BoxManager {
     await _openBoxInternal<MessagePattern>(patternsBoxName, userId);
     await _openBoxInternal<Budget>(budgetsBoxName, userId);
     await _openBoxInternal<SavingsGoal>(savingsGoalsBoxName, userId);
+    await _openBoxInternal<NotificationModel>(notificationsBoxName, userId);
   }
 
   Future<void> _openBoxInternal<T>(String baseName, String userId) async {

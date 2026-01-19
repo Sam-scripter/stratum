@@ -14,6 +14,8 @@ import '../../models/app settings/app_settings.dart';
 import '../../models/message_pattern/message_pattern.dart';
 import '../sms_reader/sms_reader_service.dart';
 import '../notification/notification_service.dart';
+import 'package:uuid/uuid.dart';
+import '../../models/notification/notification_model.dart';
 import '../pattern learning/pattern_learning_service.dart';
 
 @pragma('vm:entry-point')
@@ -212,6 +214,22 @@ class BackgroundSmsService {
             if (!transactionBox.containsKey(transaction.id)) {
                transactionBox.put(transaction.id, transaction);
                
+               // Create and save notification
+               final notification = NotificationModel(
+                 id: const Uuid().v4(),
+                 title: 'New Transaction',
+                 body: '${transaction.type == TransactionType.income ? '+' : '-'}${transaction.amount} from ${transaction.title}',
+                 timestamp: DateTime.now(),
+                 transactionId: transaction.id,
+                 isRead: false,
+               );
+               
+               final notificationsBox = boxManager.getBox<NotificationModel>(
+                 BoxManager.notificationsBoxName,
+                 userId,
+               );
+               notificationsBox.put(notification.id, notification);
+
                // Show a rich notification
                _showLocalNotification(notificationsPlugin, transaction);
             }

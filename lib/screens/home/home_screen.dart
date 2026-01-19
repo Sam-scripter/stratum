@@ -22,6 +22,7 @@ import '../notifications/notifications_screen.dart';
 import 'package:intl/intl.dart';
 import '../accounts/account_detail_screen.dart';
 import '../onboarding/sms_scanning_screen.dart';
+import '../accounts/add_account_screen.dart';
 import '../budgets/budget_screen.dart';
 import '../../services/finances/budget_service.dart';
 import 'package:hive/hive.dart';
@@ -91,7 +92,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final found = await _smsReaderService.scanRecentMessages(count: count);
         if (found > 0) {
           ScaffoldMessenger.of(context).showSnackBar(
-             SnackBar(content: Text('Found $found new transactions')),
+             SnackBar(content: Text('Found $found new transactions'), behavior: SnackBarBehavior.floating,),
           );
           _refreshAccountData(); // Refresh UI manually just in case
         }
@@ -778,7 +779,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget _buildAddAccountCard() {
     return GestureDetector(
       onTap: () {
-        // Navigate to Add Account Screen (To be implemented)
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const AddAccountScreen(),
+          ),
+        );
       },
       child: Container(
         width: 60,
@@ -1420,6 +1426,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text('Investment options coming soon!'),
+                          behavior: SnackBarBehavior.floating,
                         ),
                       );
                     },
