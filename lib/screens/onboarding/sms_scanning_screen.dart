@@ -80,6 +80,7 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('SMS permission is required'),
+            behavior: SnackBarBehavior.floating,
             backgroundColor: AppTheme.accentRed,
             action: SnackBarAction(
               label: 'Retry',

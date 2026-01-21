@@ -201,19 +201,41 @@ class SmsReaderService {
           );
 
           if (!exists) {
-            // Found a NEW account!
-            final newAccount = Account(
-              id: const Uuid().v4(),
-              name: accountName, // Use the matched bank name as default
-              balance: 0.0, // We can't know the balance yet without parsing
-              type: accountName == 'MPESA' ? AccountType.Mpesa : AccountType.Bank,
-              lastUpdated: DateTime.now(),
-              senderAddress: address, // Store the specific sender address we found
-              isAutomated: true,
-            );
+            // Found a NEW account candidates!
+            // Validate Ownership: Do we have "Balance", "Your Account", "Credited/Debited to your" in any message?
+            bool isOwnedAccount = false;
             
-            accountsBox.put(newAccount.id, newAccount);
-            newAccounts.add(newAccount);
+            // Check the messages from this sender
+            final senderMessages = messages.where((m) => (m.address?.toUpperCase() ?? '').contains(matchedBank!));
+            
+            for (final m in senderMessages) {
+              final body = m.body?.toLowerCase() ?? '';
+              if (body.contains('balance') || 
+                  body.contains('bal') || 
+                  body.contains('your account') || 
+                  body.contains('your card') ||
+                  body.contains('credited to your') ||
+                  body.contains('debited from your') ||
+                  body.contains('new m-pesa balance')) { // MPESA specific
+                  isOwnedAccount = true;
+                  break;
+              }
+            }
+
+            if (isOwnedAccount) {
+              final newAccount = Account(
+                id: const Uuid().v4(),
+                name: accountName, // Use the matched bank name as default
+                balance: 0.0, // We can't know the balance yet without parsing
+                type: accountName == 'MPESA' ? AccountType.Mpesa : AccountType.Bank,
+                lastUpdated: DateTime.now(),
+                senderAddress: address, // Store the specific sender address we found
+                isAutomated: true,
+              );
+              
+              accountsBox.put(newAccount.id, newAccount);
+              newAccounts.add(newAccount);
+            }
           }
         }
       }
@@ -347,12 +369,6 @@ class SmsReaderService {
     return upperType;
   }
 
-  /// Normalize sender address for account matching purposes
-  String _normalizeSenderAddress(String address, String? accountType) {
-    // For now, normalize by account type to match accounts of the same type
-    return accountType ?? 'UNKNOWN';
-  }
-
   /// Parse SMS to Transaction (public method for background service)
   Future<Transaction?> parseSmsToTransaction(
     String address,
@@ -417,7 +433,6 @@ class SmsReaderService {
     } catch (_) {
       // No account found
     }
-
     // SOURCE OF TRUTH CHECK
     // If it's a Bank (not MPESA) and we don't track it yet, IGNORE IT.
     // This prevents "Ghost Accounts" from duplicate confirmations.
@@ -548,11 +563,6 @@ class SmsReaderService {
            reference = refMatch?.group(1);
            
            if (matches.isNotEmpty) {
-             // Usually "Reversal of... Ksh X ... Balance is Ksh Y"
-             // Exception: "Reversal of transaction ... sent to ... of Ksh X ..."
-             // If we have 2 matches, usually 1st is amount, 2nd is balance?
-             // If 1 match, maybe just balance? No, reversal must have amount.
-
              // Let's use the explicit matches if possible
              final amountStr = matches.length > 1 ? matches[matches.length - 2]
                  .group(1) : matches.first.group(1);
@@ -827,10 +837,6 @@ class SmsReaderService {
     // Example: "Your SEND TO M-PESA... KES 1,350.00... Transaction cost KES 15.00... Avail Bal KES 27,888.18"
     
     double amount = 0.0;
-    
-    // Heuristic: The main amount is usually the first currency figure that isn't the fee or balance.
-    // Or we can rely on specific keywords like "request of KES X" or "transaction KES X" or "bought KES X"
-    
     // Better KCB specific patterns based on user examples:
     
     // 1. "KES 80.00 transaction made on KCB card..." (Debit)
@@ -1049,14 +1055,10 @@ class SmsReaderService {
           // Account not found
         }
       }
-
       return transaction;
     }
-
     return null;
   }
-
-
 
   /// Recalculate account balances from all transactions
   void _recalculateBalancesFromTransactions(
@@ -1064,11 +1066,9 @@ class SmsReaderService {
     Box<Transaction> transactionsBox,
   ) {
     final Map<String, Transaction> latestWithBalance = {};
-
     for (var transaction in transactionsBox.values) {
       if (transaction.newBalance == null || transaction.newBalance! <= 0)
         continue;
-
       final existing = latestWithBalance[transaction.accountId];
       if (existing == null || transaction.date.isAfter(existing.date)) {
         latestWithBalance[transaction.accountId] = transaction;

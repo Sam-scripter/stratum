@@ -50,7 +50,7 @@ class Account extends HiveObject {
     required this.senderAddress,
   });
 
-  // REQUIRED FIX: Adding copyWith method for cleaner updates in SmsParser
+  // copyWith method for cleaner updates in SmsParser
   Account copyWith({
     String? id,
     String? name,

@@ -26,6 +26,9 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
   Map<String, List<Transaction>> _groupedTransactions = {};
   bool _isLoading = true;
 
+  // Flattened list for SliverList
+  List<dynamic> _flatList = [];
+
   @override
   void initState() {
     super.initState();
@@ -44,54 +47,9 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
 
     // Filter transactions for this account
     final allTransactions = transactionsBox.values.toList();
-    print(
-      'Account Detail: Loading transactions for account ${widget.account.name} (ID: ${widget.account.id})',
-    );
-    print('Total transactions in box: ${allTransactions.length}');
-
     _transactions = allTransactions
         .where((t) => t.accountId == widget.account.id)
         .toList();
-
-    print(
-      'Filtered transactions for ${widget.account.name}: ${_transactions.length}',
-    );
-    if (_transactions.isEmpty && allTransactions.isNotEmpty) {
-      // Debug: Check what account IDs exist
-      final accountIds = allTransactions.map((t) => t.accountId).toSet();
-      print('Available account IDs in transactions: $accountIds');
-
-      // Debug: Check account details
-      final accountsBox = _boxManager.getBox<Account>(
-        BoxManager.accountsBoxName,
-        _userId,
-      );
-      final allAccounts = accountsBox.values.toList();
-      print(
-        'All accounts: ${allAccounts.map((a) => '${a.name} (${a.id}) - sender: ${a.senderAddress}').toList()}',
-      );
-
-      // Check if there are transactions with this account's sender address
-      final transactionsWithMatchingSender = allTransactions.where((t) {
-        final account = allAccounts.firstWhere(
-          (a) => a.id == t.accountId,
-          orElse: () => Account(
-            id: '',
-            name: '',
-            balance: 0,
-            type: AccountType.Bank,
-            lastUpdated: DateTime.now(),
-            senderAddress: '',
-            isAutomated: false,
-          ),
-        );
-        return account.senderAddress.toUpperCase() ==
-            widget.account.senderAddress.toUpperCase();
-      }).toList();
-      print(
-        'Transactions with matching sender address (${widget.account.senderAddress}): ${transactionsWithMatchingSender.length}',
-      );
-    }
 
     // Sort by date descending (newest first)
     _transactions.sort((a, b) => b.date.compareTo(a.date));
@@ -102,6 +60,13 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
       final key = _getGroupKey(transaction);
       _groupedTransactions.putIfAbsent(key, () => []).add(transaction);
     }
+    
+    // Flatten for UI
+    _flatList.clear();
+    _groupedTransactions.forEach((key, transactions) {
+      _flatList.add(key); // Header (String)
+      _flatList.addAll(transactions); // Items (Transactions)
+    });
 
     setState(() {
       _isLoading = false;
@@ -130,79 +95,123 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0A1628),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          widget.account.name,
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
-        ),
-        actions: [
-          if (widget.account.isAutomated)
-            Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryGold.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: AppTheme.primaryGold.withOpacity(0.5),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.auto_awesome,
-                        size: 14,
-                        color: AppTheme.primaryGold,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'AUTO',
-                        style: GoogleFonts.poppins(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.primaryGold,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
       body: _isLoading
           ? const Center(
               child: CircularProgressIndicator(color: AppTheme.primaryGold),
             )
-          : Column(
-              children: [
-                // Balance Card
-                _buildBalanceCard(),
-                const SizedBox(height: 20),
-                // Transactions List
-                Expanded(
-                  child: _transactions.isEmpty
-                      ? _buildEmptyState()
-                      : _buildTransactionsList(),
+          : CustomScrollView(
+              slivers: [
+                // App Bar
+                SliverAppBar(
+                  backgroundColor: const Color(0xFF0A1628),
+                  pinned: true,
+                  expandedHeight: 0, 
+                  elevation: 0,
+                  leading: IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                  title: Text(
+                    widget.account.name,
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                  actions: [
+                    if (widget.account.isAutomated)
+                      Center(
+                        child: Container(
+                          margin: const EdgeInsets.only(right: 16),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryGold.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: AppTheme.primaryGold.withOpacity(0.5),
+                            ),
+                          ),
+                          child: Text(
+                            'AUTO',
+                            style: GoogleFonts.poppins(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.primaryGold,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-                const SizedBox(height: 20),
+
+                // Balance Card
+                SliverToBoxAdapter(
+                  child: _buildBalanceCard(),
+                ),
+                
+                // Transactions Header
+                if (_transactions.isNotEmpty)
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
+                  sliver: SliverToBoxAdapter(
+                    child: Text(
+                      'All Transactions',
+                      style: GoogleFonts.poppins(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Transactions List
+                if (_transactions.isEmpty)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _buildEmptyState(),
+                  )
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          final item = _flatList[index];
+                          if (item is String) {
+                            return Padding(
+                              padding: const EdgeInsets.fromLTRB(4, 24, 4, 8),
+                              child: Text(
+                                item,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.primaryGold,
+                                ),
+                              ),
+                            );
+                          } else if (item is Transaction) {
+                            return Column(
+                              children: [
+                                _buildTransactionItem(item),
+                                const SizedBox(height: 8), 
+                              ],
+                            );
+                          }
+                          return const SizedBox.shrink();
+                        },
+                        childCount: _flatList.length,
+                      ),
+                    ),
+                  ),
+                  
+                 // Bottom padding
+                 const SliverToBoxAdapter(child: SizedBox(height: 80)),
               ],
             ),
       floatingActionButton: FloatingActionButton.extended(
@@ -316,6 +325,27 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
               _buildSummaryItem('Expense', totalExpense, AppTheme.accentRed),
             ],
           ),
+          const SizedBox(height: 16),
+
+          // Disclaimer Info
+            Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.info_outline, color: Colors.white30, size: 14),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  'Income/Expense based on detected transactions',
+                  style: GoogleFonts.poppins(
+                    fontSize: 10,
+                    color: Colors.white30,
+                    fontStyle: FontStyle.italic
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          )
         ],
       ),
     );
@@ -376,149 +406,110 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     );
   }
 
-  Widget _buildTransactionsList() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A2332),
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(18),
-            child: Text(
-              'All Transactions',
-              style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-          ),
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              itemCount: _groupedTransactions.length,
-              itemBuilder: (context, index) {
-                final groupKey = _groupedTransactions.keys.elementAt(index);
-                final groupTransactions = _groupedTransactions[groupKey]!;
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Group Header
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 8,
-                        horizontal: 10,
-                      ),
-                      child: Text(
-                        '$groupKey (${groupTransactions.length})',
-                        style: GoogleFonts.poppins(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.primaryGold,
-                        ),
-                      ),
-                    ),
-                    // Transactions in this group
-                    ...groupTransactions.map(
-                      (transaction) => Column(
-                        children: [
-                          _buildTransactionItem(transaction),
-                          if (groupTransactions.last != transaction)
-                            const Divider(color: Color(0xFF0A1628), height: 1),
-                        ],
-                      ),
-                    ),
-                    // Divider between groups
-                    if (index < _groupedTransactions.length - 1)
-                      Container(height: 8, color: const Color(0xFF0A1628)),
-                  ],
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildTransactionItem(Transaction transaction) {
+    // ... item building logic (same as before but maybe slightly polished cards)
     final isIncome = transaction.type == TransactionType.income;
     final color = isIncome ? AppTheme.accentGreen : AppTheme.accentRed;
 
-    return ListTile(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) =>
-                TransactionDetailScreen(transaction: transaction),
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A2332),
+        borderRadius: BorderRadius.circular(16),
+         border: Border.all(
+            color: Colors.white.withOpacity(0.05),
+            width: 1,
           ),
-        ).then((result) {
-          // Always reload when returning to ensure UI is up to date
-          _loadTransactions();
-        });
-      },
-      leading: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: isIncome
-              ? Colors.green.withOpacity(0.2)
-              : Colors.red.withOpacity(0.2),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Icon(
-          isIncome ? Icons.arrow_downward : Icons.arrow_upward,
-          color: color,
-          size: 20,
-        ),
       ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      title: Text(
-        transaction.recipient ?? transaction.title,
-        style: GoogleFonts.poppins(
-          color: Colors.white,
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
+      child: ListTile(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) =>
+                  TransactionDetailScreen(transaction: transaction),
+            ),
+          ).then((result) {
+            // Always reload when returning to ensure UI is up to date
+            _loadTransactions();
+          });
+        },
+        leading: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: isIncome
+                ? Colors.green.withOpacity(0.2)
+                : Colors.red.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            isIncome ? Icons.arrow_downward : Icons.arrow_upward,
+            color: color,
+            size: 20,
+          ),
         ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Padding(
-        padding: const EdgeInsets.only(top: 4),
-        child: Text(
-          DateFormat('MMM dd, yyyy • HH:mm').format(transaction.date),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        title: Text(
+          transaction.recipient ?? transaction.title,
           style: GoogleFonts.poppins(
-            color: Colors.white.withOpacity(0.5),
-            fontSize: 11,
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                DateFormat('HH:mm').format(transaction.date),
+                style: GoogleFonts.poppins(
+                  color: Colors.white.withOpacity(0.5),
+                  fontSize: 12,
+                ),
+              ),
+              if (transaction.description != null && transaction.description!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  transaction.description!,
+                  style: GoogleFonts.poppins(
+                    color: Colors.white54,
+                    fontSize: 10,
+                    fontStyle: FontStyle.italic
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              )
+            ],
           ),
         ),
-      ),
-      trailing: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(
-            '${isIncome ? '+' : '-'}KES ${NumberFormat('#,##0').format(transaction.amount)}',
-            style: GoogleFonts.poppins(
-              color: color,
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              '${isIncome ? '+' : '-'}KES ${NumberFormat('#,##0').format(transaction.amount)}',
+              style: GoogleFonts.poppins(
+                color: color,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            transaction.categoryName.toUpperCase(),
-            style: GoogleFonts.poppins(
-              color: Colors.white.withOpacity(0.4),
-              fontSize: 9,
-              letterSpacing: 0.5,
+            const SizedBox(height: 2),
+            Text(
+              transaction.categoryName.toUpperCase(),
+              style: GoogleFonts.poppins(
+                color: Colors.white.withOpacity(0.4),
+                fontSize: 10,
+                letterSpacing: 0.5,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

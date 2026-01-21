@@ -6,7 +6,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:stratum/firebase_options.dart';
 import 'package:stratum/screens/home/home_screen.dart';
-import 'package:stratum/widgets/enhanced_widgets_demo.dart';
 import 'package:stratum/screens/transactions/transactions_screen.dart';
 import 'package:stratum/screens/budgets/budget_screen.dart';
 import 'package:stratum/screens/investments/investments_screen.dart';
@@ -46,11 +45,10 @@ class StratumApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: navigatorKey, // Add global key
-      title: 'Stratum - Financial Advisor',
+      title: 'Stratum',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       home: const SplashScreen(),
-      routes: {'/enhanced-demo': (context) => const EnhancedWidgetsDemo()},
     );
   }
 }

@@ -445,8 +445,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return normalizedName;
   }
 
-
-
   // Helper to calculate Net Worth
   double get _totalNetWorth {
     double assets = _accounts
@@ -1457,8 +1455,43 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  bool _isCategoryExpanded = false; // Add state variable
+
   Widget _buildSpendingByCategory() {
-    final topCategories = _financialService.getTopSpendingCategories(limit: 5);
+    // defined colors list
+    final colors = [
+      AppTheme.primaryGold,
+      AppTheme.accentBlue,
+      AppTheme.accentGreen,
+      AppTheme.accentOrange,
+      AppTheme.accentRed,
+      Colors.purple,
+      Colors.teal,
+      Colors.pink,
+      Colors.indigo,
+      Colors.brown,
+    ];
+
+    // Get ALL categories (sorted by amount)
+    final allCategories = _financialService.getTopSpendingCategories(limit: 100);
+    
+    if (allCategories.isEmpty) {
+        return const SizedBox.shrink(); // Hide if empty
+    }
+
+    // Logic for Chart Data (Top 5 + Others)
+    final top5 = allCategories.take(5).toList();
+    final rest = allCategories.skip(5).toList();
+    final othersTotal = rest.fold<double>(0, (sum, item) => sum + item.value);
+
+    final chartSections = <MapEntry<String, double>>[];
+    chartSections.addAll(top5.map((e) => MapEntry(e.key.toString().split('.').last, e.value)));
+    if (othersTotal > 0) {
+      chartSections.add(MapEntry('Others', othersTotal));
+    }
+
+    // Logic for List Data
+    final listItems = _isCategoryExpanded ? allCategories : top5;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1484,34 +1517,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Pie Chart
                 SizedBox(
                   height: 200,
                   child: PieChart(
                     PieChartData(
-                      sections: topCategories.asMap().entries.map((entry) {
+                      sections: chartSections.asMap().entries.map((entry) {
                         final index = entry.key;
-                        final category = entry.value.key;
+                        final label = entry.value.key;
                         final amount = entry.value.value;
-                        final total = topCategories.fold<double>(
+                        final total = chartSections.fold<double>(
                           0,
                           (sum, item) => sum + item.value,
                         );
-                        final percentage = (amount / total) * 100;
-
-                        final colors = [
-                          AppTheme.primaryGold,
-                          AppTheme.accentBlue,
-                          AppTheme.accentGreen,
-                          AppTheme.accentOrange,
-                          AppTheme.accentRed,
-                        ];
+                        final percentage = total == 0 ? 0.0 : (amount / total) * 100;
 
                         return PieChartSectionData(
                           value: percentage,
-                          color: colors[index % colors.length],
-                          radius: 60,
+                          color: label == 'Others' 
+                              ? Colors.grey 
+                              : colors[index % colors.length],
+                          radius: 50,
                           titleStyle: GoogleFonts.poppins(
-                            fontSize: 12,
+                            fontSize: 10,
                             fontWeight: FontWeight.w600,
                             color: Colors.white,
                           ),
@@ -1523,48 +1551,46 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 24),
+                
+                // List Items
                 Column(
-                  children: topCategories.asMap().entries.map((entry) {
+                  children: listItems.asMap().entries.map((entry) {
                     final index = entry.key;
-                    final category = entry.value.key;
-                    final amount = entry.value.value;
+                    final categoryItem = entry.value;
+                    final categoryName = categoryItem.key.toString().split('.').last;
+                    final amount = categoryItem.value;
 
-                    final colors = [
-                      AppTheme.primaryGold,
-                      AppTheme.accentBlue,
-                      AppTheme.accentGreen,
-                      AppTheme.accentOrange,
-                      AppTheme.accentRed,
-                    ];
+                    // Color logic: if expanded match index, else match chart index
+                    final color = colors[index % colors.length];
 
                     return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.only(bottom: 12),
                       child: Row(
                         children: [
                           Container(
                             width: 12,
                             height: 12,
                             decoration: BoxDecoration(
-                              color: colors[index % colors.length],
-                              borderRadius: BorderRadius.circular(2),
+                              color: color,
+                              borderRadius: BorderRadius.circular(3),
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: Text(
-                              category.toString().split('.').last,
+                              categoryName,
                               style: GoogleFonts.poppins(
-                                fontSize: 12,
+                                fontSize: 13,
                                 fontWeight: FontWeight.w400,
-                                color: Colors.white.withOpacity(0.6),
+                                color: Colors.white.withOpacity(0.8),
                               ),
                             ),
                           ),
                           Text(
-                            'KES ${amount.toStringAsFixed(0)}',
+                            'KES ${amount.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}',
                             style: GoogleFonts.poppins(
-                              fontSize: 12,
+                              fontSize: 13,
                               fontWeight: FontWeight.w600,
                               color: Colors.white,
                             ),
@@ -1574,6 +1600,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     );
                   }).toList(),
                 ),
+
+                // View More / Show Less Button
+                if (rest.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _isCategoryExpanded = !_isCategoryExpanded;
+                        });
+                      },
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            _isCategoryExpanded ? 'Show Less' : 'View More',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: AppTheme.accentBlue,
+                            ),
+                          ),
+                          Icon(
+                            _isCategoryExpanded 
+                                ? Icons.keyboard_arrow_up 
+                                : Icons.keyboard_arrow_down,
+                            color: AppTheme.accentBlue,
+                            size: 16,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
