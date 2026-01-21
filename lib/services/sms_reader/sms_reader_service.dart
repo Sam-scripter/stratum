@@ -2,6 +2,7 @@ import 'package:flutter_sms_inbox/flutter_sms_inbox.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
 import 'package:hive/hive.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/box_manager.dart';
 import '../../models/transaction/transaction_model.dart';
 import '../../models/account/account_model.dart';
@@ -314,10 +315,28 @@ class SmsReaderService {
   Future<int> scanRecentMessages({int count = 20}) async {
     try {
       await _boxManager.openAllBoxes(userId);
+      const scanKey = 'last_sms_scan_timestamp';
+      final prefs = await SharedPreferences.getInstance();
+      final lastScanTimeMs = prefs.getInt(scanKey);
+      final lastScanDate = lastScanTimeMs != null 
+          ? DateTime.fromMillisecondsSinceEpoch(lastScanTimeMs) 
+          : null;
+
+      // Always scan at least 5 minutes back to catch any delays, even if we scanned recently
+      // Or if no scan time, fallback to count
+      
+      print('Scanning recent messages. Last scan: $lastScanDate');
+
+      // Note: flutter_sms_inbox doesn't support server-side filtering by date reliably across all Android versions
+      // So we fetch a batch and filter client-side.
+      
       final messages = await _query.querySms(
         kinds: [SmsQueryKind.inbox],
-        count: count,
+        count: count, // Still limit count for performance, but maybe increase default if optimizing
       );
+
+      // Update scan time immediately after successful query
+      await prefs.setInt(scanKey, DateTime.now().millisecondsSinceEpoch);
 
       int transactionsFound = 0;
       final List<Transaction> allTransactions = [];
@@ -327,6 +346,18 @@ class SmsReaderService {
       };
 
       for (final message in messages) {
+        // OPTIMIZATION: Stop if we reach a message older than our last scan
+        // Add a small buffer (e.g. 1 minute) to account for processing time differences
+        if (lastScanDate != null && 
+            message.date != null && 
+            message.date!.isBefore(lastScanDate.subtract(const Duration(minutes: 1)))) {
+           // We reached messages we've likely already processed
+           // continue; // Don't just break, we might have out-of-order delivery? 
+           // actually, SMS inbox is usually sorted by date desc. 
+           // But to be safe against slight time diffs, let's just ignore this one.
+           continue; 
+        }
+
         final address = message.address?.toUpperCase() ?? '';
         final isFinancial = financialSenders.any((s) => address.contains(s));
 

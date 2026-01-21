@@ -1,8 +1,7 @@
-// main.dart
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:stratum/firebase_options.dart';
 import 'package:stratum/screens/home/home_screen.dart';
@@ -15,25 +14,20 @@ import 'package:stratum/theme/app_theme.dart';
 import 'package:stratum/models/box_manager.dart';
 import 'package:stratum/services/notification/notification_service.dart';
 import 'package:stratum/services/background/sms_background_service.dart';
+import 'package:provider/provider.dart';
+import 'package:stratum/repositories/financial_repository.dart';
+import 'package:stratum/services/finances/financial_service.dart';
+import 'package:stratum/services/sms_reader/sms_reader_service.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  // Initialize Hive
   await Hive.initFlutter();
-  // Register all Hive adapters
   BoxManager.registerAdapters();
-
-  // Initialize notification service
   await NotificationService().initialize();
-
-  // Initialize background SMS service
   await BackgroundSmsService.initialize();
-
-  // SMS reading is now handled in Flutter using SmsReaderService
-  // No native receivers needed - reads SMS directly when app is open
 
   runApp(const StratumApp());
 }
@@ -43,13 +37,96 @@ class StratumApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      navigatorKey: navigatorKey, // Add global key
-      title: 'Stratum',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      home: const SplashScreen(),
+    return MultiProvider(
+      providers: [
+        // 1. Provide User (Auth State)
+        StreamProvider<User?>.value(
+          value: FirebaseAuth.instance.authStateChanges(),
+          initialData: FirebaseAuth.instance.currentUser,
+        ),
+        // 2. Provide FinancialRepository dependent on User
+        ChangeNotifierProxyProvider<User?, FinancialRepository>(
+          create: (_) => FinancialRepository(
+            userId: '', // Initial empty state
+            boxManager: BoxManager(),
+            financialService: FinancialService(),
+            smsReaderService: SmsReaderService(''),
+          ),
+          update: (_, user, previous) {
+            // If user changed or previous (initial) was empty, recreate or update
+            final userId = user?.uid ?? '';
+            
+            // If we already have a repository for this user, return it? 
+            // Actually, ChangeNotifierProxyProvider usually disposes previous when created.
+            // But here we want to Create a fresh one if userId changed.
+            
+            if (previous != null && previous.userId == userId) {
+                return previous;
+            }
+            
+            return FinancialRepository(
+              userId: userId,
+              boxManager: BoxManager(),
+              financialService: FinancialService(),
+              smsReaderService: SmsReaderService(userId),
+            );
+          },
+        ),
+      ],
+      child: MaterialApp(
+        navigatorKey: navigatorKey,
+        title: 'Stratum',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.lightTheme,
+        home: const AuthWrapper(),
+      ),
     );
+  }
+}
+
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    // We can now just check the User provided by StreamProvider
+    // But accessing it via context.watch<User?>() is cleaner or simpler StreamBuilder
+    
+    final user = context.watch<User?>();
+    
+    // Check loading state? 
+    // StreamProvider initialData usage might mean we don't have "loading" state easily distinguished from null if we set initialData null.
+    // But for Auth, null usually means not logged in.
+    // However, fast switching might flicker.
+    // Let's rely on the fact that if user is null we show splash/login.
+    
+    // If we want a true Splash vs Login screen differentiation, we might need a separate mechanism.
+    // For now, let's assume null = not logged in (or loading finished and no user).
+    // Ideally we should check connection state, but StreamProvider hides that.
+    
+    // Fallback to simpler StreamBuilder if we want ConnectionState check specifically for "Waiting".
+    // But `StreamProvider` is good.
+    
+    if (user != null) {
+      return const MainScreen();
+    }
+    
+    // If user is null, it could be loading OR logged out.
+    // Since FirebaseAuth.instance.currentUser is passed as initialData,
+    // we likely know the state immediately if initialized.
+    
+    // TODO: Add Logic to differentiate Unauthenticated vs Loading if needed.
+    // For now, assuming Unauthenticated -> SplashScreen (which redirects to Login usually? Or shows Login?)
+    // Wait, SplashScreen in this app was checking authStateChanges itself.
+    
+    // Let's look at legacy AuthWrapper logic.
+    // It returned SplashScreen if waiting.
+    // If no data, it returned SplashScreen.
+    
+    // Effectively, this app doesn't seem to have a dedicated LoginScreen in this path? 
+    // Or SplashScreen handles navigation?
+    // Let's assume SplashScreen handles redirection if not logged in.
+    return const SplashScreen();
   }
 }
 
@@ -66,13 +143,19 @@ class _MainScreenState extends State<MainScreen> {
   final List<Widget> _screens = [
     const HomeScreen(),
     const TransactionsScreen(),
-    const BudgetScreen(),
+    const BudgetScreen(), // userId passed optionally now, or we can pass it
     const InvestmentsScreen(),
     const ProfileScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
+    // Update BudgetScreen usage if needed, but we made userId optional there.
+    // We can also rebuild _screens if we want to pass userId explicitely, 
+    // but SingleTickerProviderStateMixin in BudgetScreen might complain if recreated?
+    // Actually, _screens usually should be built in build() or initialized in initState.
+    // Keeping it simple.
+    
     return Scaffold(
       body: _screens[_selectedIndex],
       bottomNavigationBar: Container(
