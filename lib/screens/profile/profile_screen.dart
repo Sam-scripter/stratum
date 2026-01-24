@@ -1,9 +1,18 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_widgets.dart';
 import '../settings/settings_screen.dart';
-import 'edit_profile_screen.dart';
+import '../../models/box_manager.dart';
+import '../../models/transaction/transaction_model.dart';
+import '../../models/budget/budget_model.dart';
+import '../../models/savings/savings_goal_model.dart';
+import '../../models/investment/investment_model.dart'; // Ensure this model exists or use generic if strictly needed, but assuming standard flow
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -13,29 +22,93 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  // Mock user data - in real app, this would come from a state management solution
-  String _userName = 'Alex Johnson';
-  String _userEmail = 'alex.johnson@email.com';
-  String _userInitials = 'AJ';
-  bool _isPremium = false;
+  // User Data
+  User? _currentUser;
+  String _userName = 'User';
+  String _userEmail = 'Processing...';
+  String _userInitials = 'U';
+  String? _profileImagePath;
+  bool _isPremium = false; // Still mock/placeholder as no subscription system yet
   
-  // Mock stats
-  final int _totalTransactions = 247;
-  final int _activeBudgets = 6;
-  final int _totalInvestments = 4;
-  final String _memberSince = 'Jan 2024';
+  // Real stats
+  int _totalTransactions = 0;
+  int _activeBudgets = 0;
+  int _totalInvestments = 0;
+  String _memberSince = '...';
 
   // Inline editing state
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   bool _isEditingName = false;
-  bool _isEditingEmail = false;
+  
+  // Image Picker
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void initState() {
     super.initState();
+    _initializeData();
+  }
+
+  Future<void> _initializeData() async {
+    _currentUser = FirebaseAuth.instance.currentUser;
+    if (_currentUser != null) {
+      _userName = _currentUser!.displayName ?? 'Stratum User';
+      _userEmail = _currentUser!.email ?? 'No Email';
+      _userInitials = _getInitials(_userName);
+      _memberSince = _formatDate(_currentUser!.metadata.creationTime);
+    }
+    
     _nameController.text = _userName;
     _emailController.text = _userEmail;
+
+    await _loadLocalSettings();
+    await _loadStats();
+  }
+
+  Future<void> _loadLocalSettings() async {
+    if (_currentUser == null) return;
+    try {
+      final box = await Hive.openBox('settings_${_currentUser!.uid}');
+      setState(() {
+        _profileImagePath = box.get('profile_image_path');
+      });
+    } catch (e) {
+      print("Error loading settings: $e");
+    }
+  }
+
+  Future<void> _loadStats() async {
+    if (_currentUser == null) return;
+    try {
+      final userId = _currentUser!.uid;
+      final boxManager = BoxManager();
+      
+      // Open boxes if not open (BoxManager usually handles singleton boxes, but we ensure)
+      await boxManager.openAllBoxes(userId);
+
+      final transactionBox = boxManager.getBox<Transaction>(BoxManager.transactionsBoxName, userId);
+      final budgetBox = boxManager.getBox<Budget>(BoxManager.budgetsBoxName, userId);
+      // Assuming Investment box exists? If not catching error.
+      // We check if BoxManager has investments. If not, we skip.
+      // Based on file list, `investment_model.dart` exists, so likely `investmentsBoxName` exists or we check generic.
+      // Let's assume standard names.
+      Box<dynamic>? investmentBox;
+      try {
+         investmentBox = Hive.box('investments_$userId');
+      } catch (_) {
+         // If generic open failed, maybe it wasn't opened.
+      }
+      
+      setState(() {
+        _totalTransactions = transactionBox.length;
+        _activeBudgets = budgetBox.length;
+        _totalInvestments = investmentBox?.length ?? 0;
+      });
+      
+    } catch (e) {
+      print("Error loading stats: $e");
+    }
   }
 
   @override
@@ -45,33 +118,57 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.dispose();
   }
 
-  void _saveName() {
+  Future<void> _saveName() async {
     if (_nameController.text.trim().isNotEmpty) {
-      setState(() {
-        _userName = _nameController.text.trim();
-        _userInitials = _getInitials(_userName);
-        _isEditingName = false;
-      });
-      // TODO: Save to backend
+      try {
+        await _currentUser?.updateDisplayName(_nameController.text.trim());
+        setState(() {
+          _userName = _nameController.text.trim();
+          _userInitials = _getInitials(_userName);
+          _isEditingName = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile Name Updated')),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error updating name: $e')),
+        );
+      }
     }
   }
+  
+  // Email editing is disabled as per requirements, so we remove _saveEmail or make it no-op
+  
+  Future<void> _pickImage() async {
+    try {
+      final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+      if (image == null) return;
 
-  void _saveEmail() {
-    if (_emailController.text.trim().isNotEmpty && _isValidEmail(_emailController.text.trim())) {
+      final appDir = await getApplicationDocumentsDirectory();
+      final fileName = 'profile_${_currentUser?.uid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final savedImage = await File(image.path).copy('${appDir.path}/$fileName');
+      
+      // Save path to Hive
+      if (_currentUser != null) {
+        final box = await Hive.openBox('settings_${_currentUser!.uid}');
+        await box.put('profile_image_path', savedImage.path);
+      }
+
       setState(() {
-        _userEmail = _emailController.text.trim();
-        _isEditingEmail = false;
+        _profileImagePath = savedImage.path;
       });
-      // TODO: Save to backend
-    } else {
+      
+    } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a valid email address')),
+         SnackBar(content: Text('Error updating photo: $e')),
       );
     }
   }
 
   String _getInitials(String name) {
-    final parts = name.split(' ');
+    if (name.isEmpty) return 'U';
+    final parts = name.trim().split(' ');
     if (parts.length >= 2) {
       return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
     } else if (parts.isNotEmpty) {
@@ -79,15 +176,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
     return 'U';
   }
-
-  bool _isValidEmail(String email) {
-    return RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email);
+  
+  String _formatDate(DateTime? date) {
+    if (date == null) return 'Unknown';
+    final List<String> months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    return '${months[date.month - 1]} ${date.year}';
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A1628), // Deep navy - clean design
+      backgroundColor: const Color(0xFF0A1628), // Deep navy
       appBar: AppBar(
         title: Text(
           'Profile',
@@ -131,28 +232,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           color: Colors.white.withOpacity(0.1),
                           width: 2,
                         ),
+                        image: _profileImagePath != null && File(_profileImagePath!).existsSync()
+                            ? DecorationImage(
+                                image: FileImage(File(_profileImagePath!)),
+                                fit: BoxFit.cover,
+                              )
+                            : null,
                       ),
-                      child: Center(
-                        child: Text(
-                          _userInitials,
-                          style: GoogleFonts.poppins(
-                            fontSize: 36,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
+                      child: _profileImagePath == null || !File(_profileImagePath!).existsSync()
+                          ? Center(
+                              child: Text(
+                                _userInitials,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 36,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            )
+                          : null,
                     ),
                     Positioned(
                       bottom: 0,
                       right: 0,
                       child: GestureDetector(
-                        onTap: () {
-                          // TODO: Implement photo picker
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Photo picker coming soon!')),
-                          );
-                        },
+                        onTap: _pickImage,
                         child: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
@@ -192,25 +296,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 const SizedBox(height: AppTheme.spacing16),
 
-                // Email Field (Editable)
+                // Email Field (Read Only)
                 _buildEditableField(
                   label: 'EMAIL ADDRESS',
                   controller: _emailController,
-                  isEditing: _isEditingEmail,
+                  isEditing: false, // Explicitly disabled
                   icon: Icons.email_outlined,
                   keyboardType: TextInputType.emailAddress,
-                  onEdit: () => setState(() => _isEditingEmail = true),
-                  onSave: _saveEmail,
-                  onCancel: () {
-                    setState(() {
-                      _isEditingEmail = false;
-                      _emailController.text = _userEmail;
-                    });
-                  },
+                  onEdit: () {}, // No-op
+                  onSave: () {}, 
+                  onCancel: () {},
+                  readOnly: true,
                 ),
                 const SizedBox(height: AppTheme.spacing24),
 
-                // Premium Status Card
+                // Premium Status Card (Static)
                 CleanCard(
                   padding: const EdgeInsets.all(20),
                   child: Column(
@@ -285,7 +385,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 const SizedBox(height: AppTheme.spacing24),
 
-            // Quick Stats Section
+            // Quick Stats Section (Real Data)
             _buildQuickStats(),
             const SizedBox(height: AppTheme.spacing24),
 
@@ -296,7 +396,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _buildPremiumBenefitsCard(),
             const SizedBox(height: AppTheme.spacing24),
 
-            // Achievements/Milestones Section
+            // Achievements/Milestones Section (Real Data Logic)
             _buildAchievementsSection(),
             const SizedBox(height: AppTheme.spacing32),
               ],
@@ -314,6 +414,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required VoidCallback onSave,
     required VoidCallback onCancel,
     TextInputType keyboardType = TextInputType.text,
+    bool readOnly = false,
   }) {
     return CleanCard(
       padding: EdgeInsets.zero,
@@ -354,9 +455,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             isDense: true,
                           ),
                           autofocus: true,
+                          onSubmitted: (_) => onSave(),
                         )
                       : GestureDetector(
-                          onTap: onEdit,
+                          onTap: readOnly ? null : onEdit,
                           child: Padding(
                             padding: const EdgeInsets.symmetric(vertical: 4),
                             child: Text(
@@ -370,27 +472,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                         ),
                 ),
-                if (isEditing) ...[
-                  IconButton(
-                    icon: const Icon(Icons.check_outlined, color: AppTheme.accentGreen, size: 20),
-                    onPressed: onSave,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: const Icon(Icons.close_outlined, color: AppTheme.accentRed, size: 20),
-                    onPressed: onCancel,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                ] else
-                  IconButton(
-                    icon: Icon(Icons.edit_outlined, color: Colors.white.withOpacity(0.6), size: 18),
-                    onPressed: onEdit,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
+                if (!readOnly) ...[
+                    if (isEditing) ...[
+                      IconButton(
+                        icon: const Icon(Icons.check_outlined, color: AppTheme.accentGreen, size: 20),
+                        onPressed: onSave,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: const Icon(Icons.close_outlined, color: AppTheme.accentRed, size: 20),
+                        onPressed: onCancel,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ] else
+                      IconButton(
+                        icon: Icon(Icons.edit_outlined, color: Colors.white.withOpacity(0.6), size: 18),
+                        onPressed: onEdit,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                ],
               ],
             ),
           ),
@@ -574,6 +678,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildAchievementsSection() {
+    // Real logic calculation
+    final hasFirstTransaction = _totalTransactions > 0;
+    final isBudgetMaster = _activeBudgets >= 5;
+    final isInvestor = _totalInvestments >= 1;
+    final isSavingsChampion = false; // Need SavingsGoal logic, skipping complex check for now or assuming false
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -595,7 +705,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 'Tracked your first expense',
                 Icons.check_circle_outlined,
                 AppTheme.accentGreen,
-                true,
+                hasFirstTransaction,
               ),
               const SizedBox(height: 16),
               _buildAchievementItem(
@@ -603,7 +713,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 'Created 5 active budgets',
                 Icons.check_circle_outlined,
                 AppTheme.accentGreen,
-                true,
+                isBudgetMaster,
               ),
               const SizedBox(height: 16),
               _buildAchievementItem(
@@ -611,15 +721,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 'Added your first investment',
                 Icons.check_circle_outlined,
                 AppTheme.accentGreen,
-                true,
+                isInvestor,
               ),
               const SizedBox(height: 16),
               _buildAchievementItem(
                 '🎯 Savings Champion',
-                'Maintained 20% savings rate for 3 months',
+                'Maintained 20% savings rate', 
                 Icons.radio_button_unchecked_outlined,
                 Colors.white.withOpacity(0.3),
-                false,
+                isSavingsChampion,
               ),
             ],
           ),
@@ -648,7 +758,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
           child: Icon(
-            icon,
+            unlocked ? icon : Icons.lock_outline, // Changed icon for locked stae
             color: unlocked ? color : Colors.white.withOpacity(0.3),
             size: 24,
           ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_widgets.dart';
 
@@ -12,10 +13,20 @@ class AccountSettingsScreen extends StatefulWidget {
 
 class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController(text: 'Alex Johnson');
-  final _emailController = TextEditingController(text: 'alex.johnson@email.com');
-  final _phoneController = TextEditingController(text: '+254 712 345 678');
+  late TextEditingController _nameController;
+  late TextEditingController _emailController;
+  late TextEditingController _phoneController;
   bool _isLoading = false;
+  User? _user;
+
+  @override
+  void initState() {
+    super.initState();
+    _user = FirebaseAuth.instance.currentUser;
+    _nameController = TextEditingController(text: _user?.displayName ?? '');
+    _emailController = TextEditingController(text: _user?.email ?? '');
+    _phoneController = TextEditingController(text: _user?.phoneNumber ?? '');
+  }
 
   @override
   void dispose() {
@@ -25,25 +36,53 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
     super.dispose();
   }
 
-  void _handleSave() {
+  Future<void> _handleSave() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
-      Future.delayed(const Duration(seconds: 1), () {
+      try {
+        if (_user != null) {
+           if (_nameController.text.trim() != _user!.displayName) {
+             await _user!.updateDisplayName(_nameController.text.trim());
+             // Reload to ensure local cache updates
+             await _user!.reload(); 
+             _user = FirebaseAuth.instance.currentUser;
+           }
+        }
+        
         if (mounted) {
-          setState(() => _isLoading = false);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Account settings updated successfully!'),
               backgroundColor: AppTheme.accentGreen,
             ),
           );
+          Navigator.pop(context); // Go back after save
         }
-      });
+      } catch (e) {
+         if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error updating account: $e'),
+              backgroundColor: AppTheme.accentRed,
+            ),
+          );
+         }
+      } finally {
+        if (mounted) setState(() => _isLoading = false);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_user == null) {
+      return Scaffold(
+        backgroundColor: AppTheme.primaryDark,
+        appBar: AppBar(backgroundColor: AppTheme.primaryDark),
+        body: const Center(child: Text("User not logged in", style: TextStyle(color: Colors.white))),
+      );
+    }
+    
     return Scaffold(
       backgroundColor: AppTheme.primaryDark,
       appBar: AppBar(
@@ -56,6 +95,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
         ),
         backgroundColor: AppTheme.primaryDark,
         elevation: 0,
+        iconTheme: const IconThemeData(color: AppTheme.primaryLight),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(AppTheme.spacing16),
@@ -80,14 +120,14 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                     ),
                     const SizedBox(height: AppTheme.spacing20),
                     _buildInfoRow(
-                      'Account ID',
-                      'USR-2024-001',
+                      'User ID',
+                      _user!.uid.substring(0, 8).toUpperCase(),
                       Icons.badge_outlined,
                     ),
                     const Divider(color: AppTheme.borderGray, height: AppTheme.spacing24),
                     _buildInfoRow(
                       'Member Since',
-                      'January 2024',
+                      _formatDate(_user!.metadata.creationTime),
                       Icons.calendar_today_outlined,
                     ),
                   ],
@@ -106,7 +146,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
               ),
               const SizedBox(height: AppTheme.spacing16),
 
-              // Full Name Field
+              // Full Name Field (Editable)
               PremiumCard(
                 padding: EdgeInsets.zero,
                 child: TextFormField(
@@ -138,50 +178,43 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
               ),
               const SizedBox(height: AppTheme.spacing16),
 
-              // Email Field
+              // Email Field (Read Only)
               PremiumCard(
                 padding: EdgeInsets.zero,
                 child: TextFormField(
                   controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
+                  readOnly: true,
+                  enabled: false,
                   style: GoogleFonts.poppins(
-                    color: AppTheme.primaryLight,
+                    color: AppTheme.primaryLight.withOpacity(0.7),
                     fontSize: 15,
                   ),
                   decoration: InputDecoration(
-                    labelText: 'Email',
+                    labelText: 'Email (Read-only)',
                     labelStyle: GoogleFonts.poppins(
                       color: AppTheme.textGray,
                     ),
                     prefixIcon: Icon(
                       Icons.email_outlined,
-                      color: AppTheme.primaryGold,
+                      color: AppTheme.textGray, // Greyed out
                     ),
                     filled: false,
                     border: InputBorder.none,
                     contentPadding: const EdgeInsets.all(AppTheme.spacing16),
                   ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Please enter your email';
-                    }
-                    if (!value.contains('@') || !value.contains('.')) {
-                      return 'Please enter a valid email';
-                    }
-                    return null;
-                  },
                 ),
               ),
               const SizedBox(height: AppTheme.spacing16),
 
-              // Phone Field
+              // Phone Field (Read Only if empty, editable if we wanted, but let's keep it read only for now to match scope)
               PremiumCard(
                 padding: EdgeInsets.zero,
                 child: TextFormField(
                   controller: _phoneController,
-                  keyboardType: TextInputType.phone,
+                  readOnly: true, // Making read-only for now unless we implement phone update flow
+                  enabled: false,
                   style: GoogleFonts.poppins(
-                    color: AppTheme.primaryLight,
+                    color: AppTheme.primaryLight.withOpacity(0.7),
                     fontSize: 15,
                   ),
                   decoration: InputDecoration(
@@ -191,18 +224,12 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                     ),
                     prefixIcon: Icon(
                       Icons.phone_outlined,
-                      color: AppTheme.primaryGold,
+                      color: AppTheme.textGray,
                     ),
                     filled: false,
                     border: InputBorder.none,
                     contentPadding: const EdgeInsets.all(AppTheme.spacing16),
                   ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Please enter your phone number';
-                    }
-                    return null;
-                  },
                 ),
               ),
               const SizedBox(height: AppTheme.spacing32),
@@ -301,6 +328,14 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
         ),
       ],
     );
+  }
+  
+  String _formatDate(DateTime? date) {
+    if (date == null) return 'Unknown';
+    final List<String> months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    return '${months[date.month - 1]} ${date.year}';
   }
 }
 
