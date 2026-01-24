@@ -10,6 +10,8 @@ import '../../models/box_manager.dart';
 import '../../services/pattern learning/pattern_learning_service.dart';
 import '../../models/message_pattern/message_pattern.dart';
 import '../../models/account/account_model.dart';
+import 'package:provider/provider.dart';
+import '../../repositories/financial_repository.dart';
 
 class TransactionDetailScreen extends StatefulWidget {
   final Transaction transaction;
@@ -87,7 +89,12 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     await transaction.save();
     
     // Learn pattern if possible
-    _learnPattern(newCategory);
+    await _learnPattern(newCategory);
+
+    // Trigger Reconciliation
+    if (mounted) {
+       await context.read<FinancialRepository>().reconcileAccount(transaction.accountId);
+    }
     
     // Check for similar transactions to batch update
     if (transaction.recipient != null && transaction.recipient!.isNotEmpty) {
@@ -96,11 +103,17 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
   }
 
   Future<void> _learnPattern(TransactionCategory category) async {
-    if (transaction.originalSms != null) {
-      // Basic pattern learning implementation usage
-      // Assuming PatternLearningService singleton or static usage
-      // Note: Actual implementation depends on PatternLearningService structure
-      // Here we just acknowledge the category update is saved on the transaction object
+    if (transaction.originalSms != null && transaction.originalSms!.isNotEmpty) {
+      final patternStr = PatternLearningService.learnPattern(transaction.originalSms!, '');
+      final pattern = MessagePattern(
+        id: const Uuid().v4(),
+        pattern: patternStr,
+        category: PatternLearningService.categoryToString(category),
+        accountType: 'UNKNOWN', // Ideally get from account but not critical for category match
+        lastSeen: DateTime.now(),
+      );
+      await PatternLearningService.savePattern(pattern, _userId);
+      print('Learned pattern for category: $category');
     }
   }
 
@@ -218,6 +231,10 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       _hasChanges = true;
     });
     await transaction.save();
+    
+    if (mounted) {
+       await context.read<FinancialRepository>().reconcileAccount(transaction.accountId);
+    }
   }
 
   void _toggleRecurring() async {
@@ -252,9 +269,12 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     );
 
     if (confirmed == true) {
+      final accountId = transaction.accountId;
       await transaction.delete();
+      
       if (mounted) {
-        Navigator.pop(context, true); // Return true to indicate change/deletion
+         await context.read<FinancialRepository>().reconcileAccount(accountId);
+         Navigator.pop(context, true); // Return true to indicate change/deletion
       }
     }
   }

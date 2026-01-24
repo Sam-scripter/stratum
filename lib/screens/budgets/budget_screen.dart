@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../models/budget/budget_model.dart';
 import '../../models/savings/savings_goal_model.dart';
+import '../../models/transaction/transaction_model.dart';
 import '../../services/finances/budget_service.dart';
 import '../../theme/app_theme.dart';
 
@@ -215,9 +216,15 @@ class _BudgetScreenState extends State<BudgetScreen> with SingleTickerProviderSt
 
   void _showAddBudgetDialog() {
      // Implementation for adding budget (Simplified for Phase 7 MVP)
-     final categoryController = TextEditingController();
+     TransactionCategory? selectedCategory;
      final amountController = TextEditingController();
      
+     // Helper for formatting enum to string
+     String getCategoryName(TransactionCategory category) {
+       String name = category.toString().split('.').last;
+       return name[0].toUpperCase() + name.substring(1);
+     }
+
      showDialog(
        context: context,
        builder: (ctx) => AlertDialog(
@@ -226,11 +233,34 @@ class _BudgetScreenState extends State<BudgetScreen> with SingleTickerProviderSt
          content: Column(
            mainAxisSize: MainAxisSize.min,
            children: [
-             TextField(
-               controller: categoryController,
-               style: TextStyle(color: Colors.white),
-               decoration: InputDecoration(labelText: "Category (e.g. Dining)", labelStyle: TextStyle(color: Colors.white54)),
+             DropdownButtonFormField<TransactionCategory>(
+                dropdownColor: const Color(0xFF2C3E50),
+                style: GoogleFonts.poppins(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: "Category",
+                  labelStyle: TextStyle(color: Colors.white54),
+                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                ),
+                value: selectedCategory,
+                items: TransactionCategory.values
+                    .where((c) => c != TransactionCategory.transfer) // Filter out transfer
+                    .map((category) {
+                      return DropdownMenuItem(
+                        value: category,
+                        child: Row(
+                          children: [
+                            Text(_getCategoryEmoji(category)),
+                            SizedBox(width: 8),
+                            Text(getCategoryName(category)),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                onChanged: (value) {
+                  selectedCategory = value;
+                },
              ),
+             SizedBox(height: 16),
              TextField(
                controller: amountController,
                style: TextStyle(color: Colors.white),
@@ -243,9 +273,9 @@ class _BudgetScreenState extends State<BudgetScreen> with SingleTickerProviderSt
            TextButton(onPressed: () => Navigator.pop(ctx), child: Text("Cancel")),
            ElevatedButton(
              onPressed: () async {
-               if (categoryController.text.isNotEmpty && amountController.text.isNotEmpty) {
+               if (selectedCategory != null && amountController.text.isNotEmpty) {
                  await _budgetService!.createOrUpdateBudget(
-                   categoryController.text, 
+                   getCategoryName(selectedCategory!), 
                    double.parse(amountController.text)
                  );
                  Navigator.pop(ctx);
@@ -258,6 +288,27 @@ class _BudgetScreenState extends State<BudgetScreen> with SingleTickerProviderSt
          ],
        )
      );
+  }
+
+  String _getCategoryEmoji(TransactionCategory category) {
+    switch (category) {
+      case TransactionCategory.salary: return '💼';
+      case TransactionCategory.freelance: return '💻';
+      case TransactionCategory.utilities: return '⚡';
+      case TransactionCategory.groceries: return '🛒';
+      case TransactionCategory.transport: return '🚗';
+      case TransactionCategory.entertainment: return '🎬';
+      case TransactionCategory.dining: return '🍽️';
+      case TransactionCategory.shopping: return '🛍️';
+      case TransactionCategory.health: return '🏥';
+      case TransactionCategory.investment: return '📈';
+      case TransactionCategory.transfer: return '🔁';
+      case TransactionCategory.manual: return '📝';
+      case TransactionCategory.other: return '📌';
+      case TransactionCategory.general: return '📌';
+      case TransactionCategory.gifts: return '🎁';
+      case TransactionCategory.familySupport: return '👨‍👩‍👧‍👦';
+    }
   }
 
   void _showAddSavingsDialog() {

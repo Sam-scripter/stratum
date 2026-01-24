@@ -28,6 +28,8 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
 
   // Flattened list for SliverList
   List<dynamic> _flatList = [];
+  
+  late Account _liveAccount;
 
   @override
   void initState() {
@@ -35,6 +37,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     final user = FirebaseAuth.instance.currentUser;
     _userId = user?.uid ?? 'anonymous_user';
     _boxManager = BoxManager();
+    _liveAccount = widget.account; // Initialize with passed account
     _loadTransactions();
   }
 
@@ -44,6 +47,16 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
       BoxManager.transactionsBoxName,
       _userId,
     );
+    final accountsBox = _boxManager.getBox<Account>(
+      BoxManager.accountsBoxName,
+      _userId,
+    );
+    
+    // Refresh account data from box
+    final freshAccount = accountsBox.get(widget.account.id);
+    if (freshAccount != null) {
+      _liveAccount = freshAccount;
+    }
 
     // Filter transactions for this account
     final allTransactions = transactionsBox.values.toList();
@@ -71,6 +84,52 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     setState(() {
       _isLoading = false;
     });
+  }
+
+  Future<void> _confirmDelete() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A2332),
+        title: const Text('Delete Account?', style: TextStyle(color: Colors.white)),
+        content: const Text(
+          'This will permanently delete this account and all its transactions.',
+          style: TextStyle(color: Colors.grey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await _deleteAccount();
+    }
+  }
+
+  Future<void> _deleteAccount() async {
+    setState(() => _isLoading = true);
+    await _boxManager.openAllBoxes(_userId);
+    
+    // 1. Delete Account
+    final accountsBox = _boxManager.getBox<Account>(BoxManager.accountsBoxName, _userId);
+    await accountsBox.delete(widget.account.id);
+    
+    // 2. Delete Transactions
+    final transactionsBox = _boxManager.getBox<Transaction>(BoxManager.transactionsBoxName, _userId);
+    final toDelete = transactionsBox.values.where((t) => t.accountId == widget.account.id).map((t) => t.id).toList();
+    await transactionsBox.deleteAll(toDelete);
+    
+    if (mounted) {
+      Navigator.pop(context, true); // Return true to trigger refresh
+    }
   }
 
   String _getGroupKey(Transaction transaction) {
@@ -112,18 +171,19 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
                     onPressed: () => Navigator.pop(context),
                   ),
                   title: Text(
-                    widget.account.name,
+                    _liveAccount.name,
                     style: GoogleFonts.poppins(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
                       color: Colors.white,
                     ),
                   ),
+
                   actions: [
-                    if (widget.account.isAutomated)
+                     if (_liveAccount.isAutomated)
                       Center(
                         child: Container(
-                          margin: const EdgeInsets.only(right: 16),
+                          margin: const EdgeInsets.only(right: 8),
                           padding: const EdgeInsets.symmetric(
                             horizontal: 8,
                             vertical: 4,
@@ -146,6 +206,21 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
                           ),
                         ),
                       ),
+                      
+                    // Delete Option
+                    PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_vert, color: Colors.white),
+                      color: const Color(0xFF1A2332),
+                      onSelected: (value) {
+                         if (value == 'delete') _confirmDelete();
+                      },
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Text('Delete Account', style: TextStyle(color: Colors.white)),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
 
@@ -220,7 +295,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
             context,
             MaterialPageRoute(
               builder: (context) => AddTransactionScreen(
-                preSelectedAccount: widget.account,
+                preSelectedAccount: _liveAccount,
               ),
             ),
           );
@@ -241,10 +316,10 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
   }
 
   Widget _buildBalanceCard() {
-    final isLiability = widget.account.type == AccountType.Liability;
+    final isLiability = _liveAccount.type == AccountType.Liability;
     final accentColor = isLiability
         ? AppTheme.accentRed
-        : (widget.account.type == AccountType.Mpesa
+        : (_liveAccount.type == AccountType.Mpesa
               ? const Color(0xFF43B02A)
               : AppTheme.accentBlue);
 
@@ -304,7 +379,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            'KES ${widget.account.balance.toStringAsFixed(2).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}',
+            'KES ${_liveAccount.balance.toStringAsFixed(2).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}',
             style: GoogleFonts.poppins(
               fontSize: 32,
               fontWeight: FontWeight.w700,

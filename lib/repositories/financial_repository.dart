@@ -6,6 +6,8 @@ import 'package:stratum/models/box_manager.dart';
 import 'package:stratum/models/transaction/transaction_model.dart';
 import 'package:stratum/services/finances/financial_service.dart';
 import 'package:stratum/services/sms_reader/sms_reader_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class FinancialRepository with ChangeNotifier {
   final BoxManager _boxManager;
@@ -15,6 +17,7 @@ class FinancialRepository with ChangeNotifier {
 
   List<Account> _accounts = [];
   List<Transaction> _recentTransactions = [];
+  List<Transaction> _allTransactions = [];
   bool _isLoading = true;
   String? _error;
 
@@ -33,6 +36,7 @@ class FinancialRepository with ChangeNotifier {
   // Getters
   List<Account> get accounts => _accounts;
   List<Transaction> get recentTransactions => _recentTransactions;
+  List<Transaction> get allTransactions => _allTransactions;
   bool get isLoading => _isLoading;
   String? get error => _error;
   String get userId => _userId;
@@ -44,6 +48,7 @@ class FinancialRepository with ChangeNotifier {
     if (_userId.isEmpty) return; // Guard against unauthenticated initialization
     try {
       await _boxManager.openAllBoxes(_userId);
+      await _loadUserAliases(); // Load aliases
       _financialService.updateCompletedPeriods();
       _setupBoxListeners();
       await _refreshDataInternal();
@@ -88,6 +93,7 @@ class FinancialRepository with ChangeNotifier {
     // We can use financialService for this, or do it here. 
     // Ensuring consistency by doing it here manually effectively.
     allTransactions.sort((a, b) => b.date.compareTo(a.date));
+    _allTransactions = allTransactions;
     _recentTransactions = allTransactions.take(8).toList();
 
     notifyListeners();
@@ -97,10 +103,85 @@ class FinancialRepository with ChangeNotifier {
   Future<void> refresh() async {
     // 1. Scan for new SMS (Optimized)
     if (await _smsReaderService.hasPermission()) {
+      // If we have no accounts (first run?), try full discovery first
+      if (_accounts.isEmpty) {
+         await _smsReaderService.discoverAccounts();
+      }
+      
+      // Ensure parser has latest names before scanning
+      await _updateParserNames();
+
+      // Always scan recent messages
       await _smsReaderService.scanRecentMessages(count: 20);
     }
     // 2. Trigger UI update (Box listeners will handle the rest, but we can force it)
     await _refreshDataInternal();
+  }
+
+  // --- User Aliases Logic ---
+  List<String> _userAliases = [];
+  List<String> get userAliases => List.unmodifiable(_userAliases);
+
+  Future<void> _loadUserAliases() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _userAliases = prefs.getStringList('user_aliases') ?? [];
+      await _updateParserNames();
+    } catch (e) {
+      print('Error loading aliases: $e');
+    }
+  }
+
+  Future<void> addAlias(String alias) async {
+    if (alias.isEmpty || _userAliases.contains(alias)) return;
+    _userAliases.add(alias);
+    notifyListeners(); // Update UI
+    
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('user_aliases', _userAliases);
+    await _updateParserNames();
+  }
+
+  Future<void> removeAlias(String alias) async {
+    if (_userAliases.remove(alias)) {
+       notifyListeners();
+       final prefs = await SharedPreferences.getInstance();
+       await prefs.setStringList('user_aliases', _userAliases);
+       await _updateParserNames();
+    }
+  }
+
+  // Allow manual trigger of balance reconciliation (e.g. after manual edits)
+  Future<void> reconcileAccount(String accountId) async {
+    await _smsReaderService.reconcileBalances(accountId);
+    // After logic update, refresh internal lists (UI update)
+    await _refreshDataInternal();
+  }
+
+  Future<void> _updateParserNames() async {
+    final List<String> allNames = [..._userAliases];
+    
+    // Add Auth names
+    // Note: We need FirebaseAuth import or pass it in. 
+    // Since we are in Repository, using FirebaseAuth instance directly is acceptable 
+    // as it is a singleton service.
+    // However, we don't have the import in this file yet.
+    // Assuming we add import 'package:firebase_auth/firebase_auth.dart';
+    
+    // START_TEMPORARY_FIX: Accessing Auth via what we have available or assuming import
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null && user.displayName != null) {
+      final parts = user.displayName!.split(' ');
+      
+      // Add individual parts
+      for (var part in parts) {
+        if (part.isNotEmpty && !allNames.contains(part)) {
+          allNames.add(part);
+        }
+      }
+    }
+    
+    _smsReaderService.setUserNames(allNames);
   }
 
   // Deduplication Logic

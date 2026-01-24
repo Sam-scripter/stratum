@@ -143,7 +143,7 @@ class BackgroundSmsService {
       final query = SmsQuery();
       final messages = await query.querySms(
         kinds: [SmsQueryKind.inbox],
-        count: 10, // Just check the very latest messages
+        count: 50, // Increased from 10 to catch rapid messages or spam overflow
       );
 
       if (messages.isEmpty) return;
@@ -152,8 +152,10 @@ class BackgroundSmsService {
       final prefs = await SharedPreferences.getInstance();
       final lastCheckMillis = prefs.getInt('last_sms_check_time') ?? 
           DateTime.now().subtract(const Duration(hours: 1)).millisecondsSinceEpoch;
-      final lastCheck = DateTime.fromMillisecondsSinceEpoch(lastCheckMillis);
-
+      // Sanity check: If lastCheck is in the future (clock skew), reset it
+      final nowMillis = DateTime.now().millisecondsSinceEpoch;
+      final safeLastCheckMillis = lastCheckMillis > nowMillis ? nowMillis - 3600000 : lastCheckMillis;
+      
       // Filter new financial messages
       final financialSenders = {
         'MPESA', 'M-PESA', 'SAFARICOM', 'KCB', 'EQUITY', 'COOP',
@@ -164,7 +166,7 @@ class BackgroundSmsService {
         if (msg.date == null || msg.body == null) return false;
         
         // Strict date check: Only process messages strictly NEWER than last check
-        final isNew = msg.date!.millisecondsSinceEpoch > lastCheckMillis;
+        final isNew = msg.date!.millisecondsSinceEpoch > safeLastCheckMillis;
         if (!isNew) return false;
 
         final address = msg.address?.toUpperCase() ?? '';
@@ -182,39 +184,19 @@ class BackgroundSmsService {
         final smsReader = SmsReaderService(userId);
 
         for (final msg in newMessages) {
-          final transaction = await smsReader.parseSmsToTransaction(
+          // Use the robust processSingleSms method which handles duplicates, 
+          // account updates, and saving to Hive correctly.
+          final transaction = await smsReader.processSingleSms(
             msg.address!,
             msg.body!,
             msg.date!,
           );
 
           if (transaction != null) {
-            // Save logic is handled inside parseSmsToTransaction -> saveTransactions?
-            // Actually, in the refactored SmsReaderService, `parseSmsToTransaction` returns the object
-            // but `_saveTransactions` is private. 
-            // Wait, I refactored `parseSmsToTransaction` to just RETURN the transaction.
-            // It calls `_parseSmsToTransaction` which calls `_parseFinancialSms`.
-            // It DOES NOT save it to the database automatically in the public method I exposed?
-            // Let's check the code I wrote in Step 88.
-            // In Step 88, `parseSmsToTransaction` calls `_parseSmsToTransaction`.
-            // `_parseSmsToTransaction` returns `Transaction?`.
-            // Does it save? 
-            // `_parseSmsToTransaction` finds/creates account, updates account balance, but...
-            // It calls `_parseFinancialSms`.
-            // It DOES update existing account with balance.
-            // BUT it does NOT put the TRANSACTION into the `transactionsBox`.
-            
-            // I need to save it manually here!
-            final transactionBox = boxManager.getBox<Transaction>(
-              BoxManager.transactionsBoxName,
-              userId,
-            );
-            
-            // Check duplications again just to be safe (idempotency)
-            if (!transactionBox.containsKey(transaction.id)) {
-               transactionBox.put(transaction.id, transaction);
-               
-               // Create and save notification
+              // Create and save notification (NotificationService doesn't save to Hive, it just shows)
+              // We need to persist the notification so it shows up in "Notifications Screen" if we have one.
+              // Assuming BoxManager is open:
+              
                final notification = NotificationModel(
                  id: const Uuid().v4(),
                  title: 'New Transaction',
@@ -232,31 +214,24 @@ class BackgroundSmsService {
 
                // Show a rich notification
                _showLocalNotification(notificationsPlugin, transaction);
-            }
           }
         }
         
         // Update last check time to the Date of the NEWEST message found
-        // This prevents double processing
-        final newestMsgTime = newMessages
-            .map((m) => m.date!.millisecondsSinceEpoch)
-            .reduce((a, b) => a > b ? a : b);
-            
-        await prefs.setInt('last_sms_check_time', newestMsgTime);
-      } else {
-        // If no new messages, update time to now to avoid scanning old stuff next boot
-        // Actually, better to ONLY update if we processed something, OR if we want to move the window forward.
-        // If we simply move forward, we might miss messages that arrived during the 15s sleep if we use `now()`.
-        // Safe bet: Don't update `last_sms_check_time` if empty, just let it stay at last successful process 
-        // OR update it to `now` ONLY if we are sure we didn't miss anything.
-        // Since we query `count: 10`, if we receive 11 messages in 15 seconds we miss one. Unlikely.
-        // Safe strategy: Update to `DateTime.now()`? No, keeping strict reference to message timestamps is safer.
-        // But if I never receive a message, `last_sms_check_time` stays old, and I keep scanning the same old 10 messages?
-        // Yes, `isNew` check handles that.
-      }
+        if (newMessages.isNotEmpty) {
+           final newestMsgTime = newMessages
+              .map((m) => m.date!.millisecondsSinceEpoch)
+              .reduce((a, b) => a > b ? a : b);
+           await prefs.setInt('last_sms_check_time', newestMsgTime);
+        }
+      } 
       
-    } catch (e) {
+    } catch (e, stack) {
       print('Background Service Error: $e');
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('last_background_error', '${DateTime.now()}: $e\n$stack');
+      } catch (_) {}
     }
   }
 

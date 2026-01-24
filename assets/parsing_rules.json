@@ -1,0 +1,139 @@
+{
+  "version": 3,
+  "patterns": [
+    {
+      "bank": "MPESA",
+      "type": "AIRTIME",
+      "regex": "([A-Z0-9]+)\\s+confirmed\\.?\\s*You bought Ksh([\\d,]+\\.\\d{2})\\s+of\\s+airtime\\s+on\\s+([\\d/]+)\\s+at\\s+([\\d:]+\\s+[AP]M)\\.?\\s*New M-PESA balance is Ksh([\\d,]+\\.\\d{2})",
+      "groups": {
+        "reference": 1,
+        "amount": 2,
+        "date": 3,
+        "time": 4,
+        "balance": 5,
+        "recipient": "Safaricom Airtime"
+      }
+    },
+    {
+      "bank": "MPESA",
+      "type": "PAYBILL",
+      "regex": "([A-Z0-9]+)\\s+Confirmed\\.?\\s*Ksh([\\d,]+\\.\\d{2})\\s+(?:paid to|sent to)\\s+([^.]+?)\\.?\\s+on\\s+([\\d/]+)\\s+at\\s+([\\d:]+\\s+[AP]M)\\.?\\s*New M-PESA balance is Ksh([\\d,]+\\.\\d{2})",
+      "groups": {
+        "reference": 1,
+        "amount": 2,
+        "recipient": 3,
+        "date": 4,
+        "time": 5,
+        "balance": 6
+      }
+    },
+    {
+      "bank": "MPESA",
+      "type": "SENT",
+      "regex": "([A-Z0-9]+)\\s+Confirmed\\.?\\s*Ksh([\\d,]+\\.\\d{2})\\s+sent to\\s+(.+?)\\s+on\\s+([\\d/]+)\\s+at\\s+([\\d:]+\\s+[AP]M)\\.?\\s*New M-PESA balance is Ksh([\\d,]+\\.\\d{2})",
+      "groups": {
+        "reference": 1,
+        "amount": 2,
+        "recipient": 3,
+        "date": 4,
+        "time": 5,
+        "balance": 6
+      }
+    },
+    {
+      "bank": "MPESA",
+      "type": "DEPOSIT",
+      "regex": "([A-Z0-9]+)\\s+Confirmed\\.?\\s+On\\s+([\\d/]+)\\s+at\\s+([\\d:]+\\s+[AP]M)\\s+Give\\s+Ksh([\\d,]+\\.\\d{2})\\s+cash to\\s+(.+?)\\s+New M-PESA balance is Ksh([\\d,]+\\.\\d{2})",
+      "groups": {
+        "reference": 1,
+        "date": 2,
+        "time": 3,
+        "amount": 4,
+        "recipient": 5,
+        "balance": 6
+      }
+    },
+    {
+      "bank": "MPESA",
+      "type": "RECEIVED",
+      "regex": "([A-Z0-9]+)\\s+Confirmed\\.?\\s*You have received Ksh([\\d,]+\\.\\d{2})\\s+from\\s+(.+?)\\s+on\\s+([\\d/]+)\\s+at\\s+([\\d:]+\\s+[AP]M)\\s+New M-PESA balance is Ksh([\\d,]+\\.\\d{2})",
+      "groups": {
+        "reference": 1,
+        "amount": 2,
+        "sender": 3,
+        "date": 4,
+        "time": 5,
+        "balance": 6
+      }
+    },
+    {
+      "bank": "MPESA",
+      "type": "WITHDRAW",
+      "regex": "([A-Z0-9]+)\\s+Confirmed\\.?\\s*on\\s+([\\d/]+)\\s+at\\s+([\\d:]+\\s+[AP]M)Withdraw\\s+Ksh([\\d,]+\\.\\d{2})\\s+from\\s+(.+?)\\s+New M-PESA balance is Ksh([\\d,]+\\.\\d{2})",
+      "groups": {
+        "reference": 1,
+        "date": 2,
+        "time": 3,
+        "amount": 4,
+        "agent": 5,
+        "balance": 6
+      }
+    },
+    {
+      "bank": "KCB",
+      "type": "SEND_TO_MPESA",
+      "regex": "([A-Z0-9]+)\\s+Completed\\.\\s*Your SEND TO M-PESA request of KES\\s*([\\d,]+\\.\\d{2})\\s+from\\s+.*?to\\s+(.+?)\\s+at\\s+.*?\\s+has been processed successfully.*?Transaction cost KES\\s*([\\d,]+\\.\\d{2})",
+      "groups": {
+        "reference": 1,
+        "amount": 2,
+        "recipient": 3,
+        "fee": 4
+      }
+    },
+    {
+      "bank": "KCB",
+      "type": "CARD_PAYMENT",
+      "regex": "(?:KES|Ksh)\\s*([\\d,]+\\.\\d{2})\\s+transaction made on KCB card.*?at\\s+(.+?)\\s+on\\s+([\\d/]+)\\s+([\\d:]+[ap]m),?\\s*Avail\\s+balance\\s+(?:KES|Ksh)\\s*([\\d,]+\\.\\d{2})",
+      "groups": {
+        "amount": 1,
+        "recipient": 2,
+        "date": 3,
+        "time": 4,
+        "balance": 5
+      }
+    },
+    {
+      "bank": "KCB",
+      "type": "REVERSAL",
+      "regex": "Your KCB credit card.*?transaction\\s+(?:KES|Ksh)\\s*([\\d,]+\\.\\d{2})\\s+at\\s+(.+?)\\s+on\\s+.*?has been reversed",
+      "groups": {
+        "amount": 1,
+        "recipient": 2,
+        "is_reversal": true
+      }
+    },
+    {
+      "bank": "KCB",
+      "type": "RECEIVED",
+      "regex": "([A-Z0-9]+)\\s+Confirmed!\\s+You have received\\s+(?:KES|Ksh)\\s*([\\d,]+\\.\\d{2})\\s+from\\s+(.+?)\\s+at\\s+([\\d-]+)\\s+([\\d:]+\\s+[AP]M)\\s+via\\s+KCB",
+      "groups": {
+        "reference": 1,
+        "amount": 2,
+        "sender": 3,
+        "date": 4,
+        "time": 5
+      }
+    },
+    {
+      "bank": "KCB",
+      "type": "DEPOSIT",
+      "regex": "(?:KES|Ksh)\\s*([\\d,]+\\.\\d{2})\\s+sent to KCB Pay Bill.*?for account\\s+.*?({{USER_NAMES}}).*?has been received\\s+on\\s+([\\d/]+)\\s+at\\s+([\\d:]+\\s+[AP]M)",
+      "groups": {
+        "amount": 1,
+        "date": 3,
+        "time": 4,
+        "sender": "M-PESA Transfer"
+      }
+    }
+  ]
+}

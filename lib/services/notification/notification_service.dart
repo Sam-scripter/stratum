@@ -18,6 +18,10 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _notifications = 
     FlutterLocalNotificationsPlugin();
   bool _initialized = false;
+  
+  // Pending ID for cold start or unauthenticated state
+  String? _pendingTransactionId;
+  String? get pendingTransactionId => _pendingTransactionId;
 
   /// Initialize the notification service
   Future<void> initialize() async {
@@ -43,6 +47,13 @@ class NotificationService {
     // Request permissions for Android 13+
     await _requestPermissions();
 
+    // Check if app was launched by notification
+    final details = await _notifications.getNotificationAppLaunchDetails();
+    if (details != null && details.didNotificationLaunchApp && details.notificationResponse?.payload != null) {
+      _pendingTransactionId = details.notificationResponse!.payload;
+      print("App launched via notification for transaction: $_pendingTransactionId");
+    }
+
     _initialized = true;
   }
 
@@ -53,7 +64,7 @@ class NotificationService {
     
     if (androidImplementation != null) {
       await androidImplementation.requestNotificationsPermission();
-      await androidImplementation.requestExactAlarmsPermission();
+      // await androidImplementation.requestExactAlarmsPermission(); // Not strictly needed unless scheduling
     }
   }
 
@@ -80,13 +91,13 @@ class NotificationService {
       : 'You paid $formattedAmount to ${transaction.title}';
 
     const androidDetails = AndroidNotificationDetails(
-      'transaction_channel',
-      'Transaction Notifications',
+      'transaction_alert', // Must match Background Service Channel ID if possible, or be distinct
+      'Transaction Alerts',
       channelDescription: 'Notifications when transactions are automatically detected',
       importance: Importance.high,
       priority: Priority.high,
       showWhen: true,
-      icon: '@mipmap/ic_launcher',
+      icon: '@mipmap/ic_launcher', // Ensure resource exists
       color: Color(0xFFD4AF37), // Gold color
       styleInformation: BigTextStyleInformation(''),
     );
@@ -102,7 +113,7 @@ class NotificationService {
       iOS: iosDetails,
     );
 
-    // Use transaction ID as notification ID to avoid duplicates
+    // Use transaction ID hash as notification ID to avoid duplicates
     final notificationId = transaction.id.hashCode;
 
     await _notifications.show(
@@ -114,34 +125,62 @@ class NotificationService {
     );
   }
 
-
-
-  /// Handle notification tap - navigate to transaction detail
+  /// Handle notification tap - navigate to transaction detail or queue it
   void _onNotificationTapped(NotificationResponse response) async {
-    if (response.payload != null && navigatorKey.currentState != null) {
+    if (response.payload != null) {
       final transactionId = response.payload!;
       print('Notification tapped for transaction: $transactionId');
       
-      try {
-        // We need to fetch the transaction object
-        final userId = FirebaseAuth.instance.currentUser?.uid;
-        if (userId != null) {
-          final boxManager = BoxManager();
-          await boxManager.openAllBoxes(userId);
-          final box = boxManager.getBox<Transaction>(BoxManager.transactionsBoxName, userId);
-          final transaction = box.get(transactionId);
-          
-          if (transaction != null) {
-             navigatorKey.currentState!.push(
-               MaterialPageRoute(
-                 builder: (context) => TransactionDetailScreen(transaction: transaction),
-               ),
-             );
-          }
-        }
-      } catch (e) {
-        print('Error navigating to transaction: $e');
+      final user = FirebaseAuth.instance.currentUser;
+      
+      // If user is logged in and navigator is ready, go immediately.
+      // Otherwise, store it as pending.
+      if (user != null && navigatorKey.currentState != null) {
+         _navigateToTransaction(transactionId);
+      } else {
+        _pendingTransactionId = transactionId;
+        print('Queued transaction navigation (Auth/Nav not ready)');
       }
+    }
+  }
+
+  /// Consume and clear the pending transaction ID
+  void consumePendingTransaction() {
+    if (_pendingTransactionId != null) {
+      final id = _pendingTransactionId!;
+      _pendingTransactionId = null;
+      // Small delay to ensure UI frame is ready if called during build
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _navigateToTransaction(id);
+      });
+    }
+  }
+  
+  Future<void> _navigateToTransaction(String transactionId) async {
+    try {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId == null) return;
+      
+      final boxManager = BoxManager();
+      // Ensure box is open (might be redundant but safe)
+      if (!Hive.isBoxOpen(BoxManager.transactionsBoxName + '_$userId')) {
+         await boxManager.openAllBoxes(userId);
+      }
+      
+      final box = boxManager.getBox<Transaction>(BoxManager.transactionsBoxName, userId);
+      final transaction = box.get(transactionId);
+      
+      if (transaction != null && navigatorKey.currentState != null) {
+          navigatorKey.currentState!.push(
+            MaterialPageRoute(
+              builder: (context) => TransactionDetailScreen(transaction: transaction),
+            ),
+          );
+      } else {
+        print("Transaction not found or navigator invalid");
+      }
+    } catch (e) {
+      print('Error navigating to transaction: $e');
     }
   }
   

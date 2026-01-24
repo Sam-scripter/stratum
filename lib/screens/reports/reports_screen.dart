@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
+import 'package:collection/collection.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_widgets.dart';
+import '../../repositories/financial_repository.dart';
+import '../../models/transaction/transaction_model.dart';
+import '../../services/finances/financial_service.dart';
+import 'category_detail_screen.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({Key? key}) : super(key: key);
@@ -13,7 +20,17 @@ class ReportsScreen extends StatefulWidget {
 
 class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  String _selectedPeriod = 'This Month';
+  TimePeriod _selectedPeriod = TimePeriod.thisMonth;
+
+  String _getPeriodDisplayName(TimePeriod period) {
+    switch(period) {
+      case TimePeriod.thisWeek: return 'This Week';
+      case TimePeriod.thisMonth: return 'This Month';
+      case TimePeriod.thisYear: return 'This Year';
+      case TimePeriod.today: return 'Today';
+      default: return 'Custom';
+    }
+  }
 
   @override
   void initState() {
@@ -29,58 +46,104 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.primaryDark,
-      appBar: AppBar(
-        title: Text(
-          'Financial Reports',
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-            color: AppTheme.primaryLight,
+    return Consumer<FinancialRepository>(
+      builder: (context, repository, _) {
+        // Filter transactions once for consistency
+        final transactions = _filterTransactions(repository.allTransactions);
+        
+        return Scaffold(
+          backgroundColor: AppTheme.primaryDark,
+          appBar: AppBar(
+            title: Text(
+              'Financial Reports',
+              style: GoogleFonts.poppins(
+                fontWeight: FontWeight.w600,
+                color: AppTheme.primaryLight,
+              ),
+            ),
+            backgroundColor: AppTheme.primaryDark,
+            elevation: 0,
+            actions: [
+              PopupMenuButton<TimePeriod>(
+                icon: Icon(Icons.calendar_today, color: AppTheme.primaryGold),
+                color: AppTheme.surfaceGray,
+                onSelected: (value) {
+                  setState(() => _selectedPeriod = value);
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(value: TimePeriod.thisWeek, child: Text('This Week')),
+                  const PopupMenuItem(value: TimePeriod.thisMonth, child: Text('This Month')),
+                  const PopupMenuItem(value: TimePeriod.thisYear, child: Text('This Year')),
+                ],
+              ),
+            ],
+            bottom: TabBar(
+              controller: _tabController,
+              indicatorColor: AppTheme.primaryGold,
+              labelColor: AppTheme.primaryGold,
+              unselectedLabelColor: AppTheme.textGray,
+              labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+              tabs: const [
+                Tab(text: 'Overview'),
+                Tab(text: 'Expenses'),
+                Tab(text: 'Income'),
+              ],
+            ),
           ),
-        ),
-        backgroundColor: AppTheme.primaryDark,
-        elevation: 0,
-        actions: [
-          PopupMenuButton<String>(
-            icon: Icon(Icons.calendar_today, color: AppTheme.primaryGold),
-            color: AppTheme.surfaceGray,
-            onSelected: (value) {
-              setState(() => _selectedPeriod = value);
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'This Week', child: Text('This Week')),
-              const PopupMenuItem(value: 'This Month', child: Text('This Month')),
-              const PopupMenuItem(value: 'This Year', child: Text('This Year')),
-              const PopupMenuItem(value: 'Custom', child: Text('Custom Range')),
+          body: TabBarView(
+            controller: _tabController,
+            children: [
+              _buildOverviewTab(transactions),
+              _buildExpensesTab(transactions),
+              _buildIncomeTab(transactions),
             ],
           ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: AppTheme.primaryGold,
-          labelColor: AppTheme.primaryGold,
-          unselectedLabelColor: AppTheme.textGray,
-          labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-          tabs: const [
-            Tab(text: 'Overview'),
-            Tab(text: 'Expenses'),
-            Tab(text: 'Income'),
-          ],
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildOverviewTab(),
-          _buildExpensesTab(),
-          _buildIncomeTab(),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildOverviewTab() {
+  // Helper to filter transactions
+  List<Transaction> _filterTransactions(List<Transaction> allTransactions) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    
+    return allTransactions.where((t) {
+      final tDate = t.date;
+      final tDateOnly = DateTime(tDate.year, tDate.month, tDate.day);
+      
+      switch (_selectedPeriod) {
+        case TimePeriod.today:
+          return tDateOnly == today;
+        case TimePeriod.thisWeek:
+           // Week starts Sunday
+           final daysFromSunday = now.weekday == 7 ? 0 : now.weekday;
+           final weekStart = today.subtract(Duration(days: daysFromSunday));
+           final weekEnd = weekStart.add(const Duration(days: 7)); // Exclusive
+           return (tDateOnly.isAtSameMomentAs(weekStart) || tDateOnly.isAfter(weekStart)) && 
+                  tDateOnly.isBefore(weekEnd);
+        case TimePeriod.thisMonth:
+           return tDate.year == now.year && tDate.month == now.month;
+        case TimePeriod.thisYear:
+           return tDate.year == now.year;
+        default:
+           return true;
+      }
+    }).toList();
+  }
+
+  Widget _buildOverviewTab(List<Transaction> transactions) {
+    // 1. Calculate Totals
+    double income = 0;
+    double expense = 0;
+    for (var t in transactions) {
+      if (t.type == TransactionType.income) income += t.amount;
+      else expense += t.amount;
+    }
+    final net = income - expense;
+    final savingsRate = income > 0 ? (net / income * 100) : 0.0;
+    final formatter = NumberFormat('#,##0', 'en_US');
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(AppTheme.spacing16),
       child: Column(
@@ -94,7 +157,7 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Financial Summary - $_selectedPeriod',
+                  'Financial Summary - ${_getPeriodDisplayName(_selectedPeriod)}',
                   style: GoogleFonts.poppins(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -108,7 +171,7 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
                     Expanded(
                       child: _buildSummaryItem(
                         'Total Income',
-                        'KES 125,000',
+                        'KES ${formatter.format(income)}',
                         AppTheme.accentGreen,
                         Icons.arrow_downward,
                       ),
@@ -117,7 +180,7 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
                     Expanded(
                       child: _buildSummaryItem(
                         'Total Expenses',
-                        'KES 85,420',
+                        'KES ${formatter.format(expense)}',
                         AppTheme.accentRed,
                         Icons.arrow_upward,
                       ),
@@ -130,7 +193,7 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
                     Expanded(
                       child: _buildSummaryItem(
                         'Net Savings',
-                        'KES 39,580',
+                        'KES ${formatter.format(net)}',
                         AppTheme.primaryGold,
                         Icons.account_balance_wallet,
                       ),
@@ -139,7 +202,7 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
                     Expanded(
                       child: _buildSummaryItem(
                         'Savings Rate',
-                        '31.6%',
+                        '${savingsRate.toStringAsFixed(1)}%',
                         AppTheme.accentBlue,
                         Icons.trending_up,
                       ),
@@ -171,132 +234,45 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
                   child: BarChart(
                     BarChartData(
                       alignment: BarChartAlignment.spaceAround,
-                      maxY: 150000,
-                      barTouchData: BarTouchData(enabled: false),
+                      maxY: _calculateMaxY(transactions),
+                      barTouchData: BarTouchData(
+                        touchTooltipData: BarTouchTooltipData(
+                          tooltipBgColor: AppTheme.surfaceGray,
+                          getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                            return BarTooltipItem(
+                              'KES ${rod.toY.toStringAsFixed(0)}',
+                              GoogleFonts.poppins(color: Colors.white),
+                            );
+                          },
+                        ),
+                      ),
                       titlesData: FlTitlesData(
                         show: true,
                         bottomTitles: AxisTitles(
                           sideTitles: SideTitles(
                             showTitles: true,
-                            getTitlesWidget: (value, meta) {
-                              const labels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
-                              if (value.toInt() < labels.length) {
-                                return Text(
-                                  labels[value.toInt()],
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 10,
-                                    color: AppTheme.textGray,
-                                  ),
-                                );
-                              }
-                              return const Text('');
-                            },
+                            getTitlesWidget: (value, meta) => _getBottomTitles(value, meta, _selectedPeriod),
                           ),
                         ),
                         leftTitles: AxisTitles(
                           sideTitles: SideTitles(
                             showTitles: true,
-                            reservedSize: 50,
+                            reservedSize: 40,
                             getTitlesWidget: (value, meta) {
-                              return Text(
-                                '${(value / 1000).toStringAsFixed(0)}K',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 10,
-                                  color: AppTheme.textGray,
-                                ),
-                              );
+                               if (value == 0) return const SizedBox();
+                               return Text(
+                                  '${(value / 1000).toStringAsFixed(0)}K',
+                                  style: GoogleFonts.poppins(fontSize: 10, color: AppTheme.textGray),
+                               );
                             },
                           ),
                         ),
-                        topTitles: const AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
-                        ),
-                        rightTitles: const AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
-                        ),
+                        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                       ),
-                      gridData: FlGridData(
-                        show: true,
-                        drawVerticalLine: false,
-                        horizontalInterval: 25000,
-                        getDrawingHorizontalLine: (value) {
-                          return FlLine(
-                            color: AppTheme.borderGray.withOpacity(0.2),
-                            strokeWidth: 1,
-                          );
-                        },
-                      ),
+                      gridData: FlGridData(show: false),
                       borderData: FlBorderData(show: false),
-                      barGroups: [
-                        BarChartGroupData(
-                          x: 0,
-                          barRods: [
-                            BarChartRodData(
-                              toY: 35000,
-                              color: AppTheme.accentGreen,
-                              width: 20,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            BarChartRodData(
-                              toY: 22000,
-                              color: AppTheme.accentRed,
-                              width: 20,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ],
-                        ),
-                        BarChartGroupData(
-                          x: 1,
-                          barRods: [
-                            BarChartRodData(
-                              toY: 42000,
-                              color: AppTheme.accentGreen,
-                              width: 20,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            BarChartRodData(
-                              toY: 28000,
-                              color: AppTheme.accentRed,
-                              width: 20,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ],
-                        ),
-                        BarChartGroupData(
-                          x: 2,
-                          barRods: [
-                            BarChartRodData(
-                              toY: 31000,
-                              color: AppTheme.accentGreen,
-                              width: 20,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            BarChartRodData(
-                              toY: 19000,
-                              color: AppTheme.accentRed,
-                              width: 20,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ],
-                        ),
-                        BarChartGroupData(
-                          x: 3,
-                          barRods: [
-                            BarChartRodData(
-                              toY: 17000,
-                              color: AppTheme.accentGreen,
-                              width: 20,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            BarChartRodData(
-                              toY: 16420,
-                              color: AppTheme.accentRed,
-                              width: 20,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ],
-                        ),
-                      ],
+                      barGroups: _generateBarGroups(transactions, _selectedPeriod),
                     ),
                   ),
                 ),
@@ -320,11 +296,8 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
                   ),
                 ),
                 const SizedBox(height: AppTheme.spacing20),
-                _buildCategoryRow('Food & Dining', 28500, 0.33, AppTheme.accentRed),
-                _buildCategoryRow('Transport', 18200, 0.21, AppTheme.accentBlue),
-                _buildCategoryRow('Shopping', 15400, 0.18, AppTheme.accentOrange),
-                _buildCategoryRow('Entertainment', 12300, 0.14, AppTheme.accentOrange),
-                _buildCategoryRow('Utilities', 11020, 0.13, AppTheme.accentGreen),
+                const SizedBox(height: AppTheme.spacing20),
+                ..._buildTopSpendingCategories(transactions),
               ],
             ),
           ),
@@ -334,7 +307,14 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
     );
   }
 
-  Widget _buildExpensesTab() {
+  Widget _buildExpensesTab(List<Transaction> transactions) {
+    if (transactions.isEmpty) {
+      return Center(child: Text('No transactions found', style: GoogleFonts.poppins(color: Colors.white54)));
+    }
+    
+    // Filter expenses only
+    final expenses = transactions.where((t) => t.type == TransactionType.expense).toList();
+    
     return SingleChildScrollView(
       padding: const EdgeInsets.all(AppTheme.spacing16),
       child: Column(
@@ -358,71 +338,32 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
                   child: LineChart(
                     LineChartData(
                       lineTouchData: LineTouchData(enabled: true),
-                      gridData: FlGridData(
-                        show: true,
-                        drawVerticalLine: false,
-                        horizontalInterval: 10000,
-                        getDrawingHorizontalLine: (value) {
-                          return FlLine(
-                            color: AppTheme.borderGray.withOpacity(0.2),
-                            strokeWidth: 1,
-                          );
-                        },
-                      ),
+                      gridData: FlGridData(show: true, drawVerticalLine: false),
                       titlesData: FlTitlesData(
                         show: true,
                         bottomTitles: AxisTitles(
                           sideTitles: SideTitles(
                             showTitles: true,
-                            getTitlesWidget: (value, meta) {
-                              const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-                              if (value.toInt() < labels.length) {
-                                return Text(
-                                  labels[value.toInt()],
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 10,
-                                    color: AppTheme.textGray,
-                                  ),
-                                );
-                              }
-                              return const Text('');
-                            },
+                            getTitlesWidget: (value, meta) => _getBottomTitles(value, meta, _selectedPeriod),
                           ),
                         ),
                         leftTitles: AxisTitles(
                           sideTitles: SideTitles(
-                            showTitles: true,
-                            reservedSize: 50,
-                            getTitlesWidget: (value, meta) {
-                              return Text(
-                                '${(value / 1000).toStringAsFixed(0)}K',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 10,
-                                  color: AppTheme.textGray,
-                                ),
-                              );
-                            },
-                          ),
+                             showTitles: true, 
+                             reservedSize: 40,
+                             getTitlesWidget: (value, meta) {
+                               if (value == 0) return const SizedBox();
+                               return Text('${(value / 1000).toStringAsFixed(0)}K', style: TextStyle(fontSize: 10, color: Colors.grey));
+                             }
+                          )
                         ),
-                        topTitles: const AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
-                        ),
-                        rightTitles: const AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
-                        ),
+                        topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
                       ),
                       borderData: FlBorderData(show: false),
                       lineBarsData: [
                         LineChartBarData(
-                          spots: const [
-                            FlSpot(0, 15000),
-                            FlSpot(1, 22000),
-                            FlSpot(2, 18000),
-                            FlSpot(3, 25000),
-                            FlSpot(4, 19000),
-                            FlSpot(5, 21000),
-                            FlSpot(6, 16420),
-                          ],
+                          spots: _generateLineSpots(expenses, _selectedPeriod),
                           isCurved: true,
                           color: AppTheme.accentRed,
                           barWidth: 3,
@@ -444,7 +385,14 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
     );
   }
 
-  Widget _buildIncomeTab() {
+  Widget _buildIncomeTab(List<Transaction> transactions) {
+     if (transactions.isEmpty) {
+      return Center(child: Text('No transactions found', style: GoogleFonts.poppins(color: Colors.white54)));
+    }
+    
+    // Filter income
+    final income = transactions.where((t) => t.type == TransactionType.income).toList();
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(AppTheme.spacing16),
       child: Column(
@@ -468,71 +416,32 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
                   child: LineChart(
                     LineChartData(
                       lineTouchData: LineTouchData(enabled: true),
-                      gridData: FlGridData(
-                        show: true,
-                        drawVerticalLine: false,
-                        horizontalInterval: 10000,
-                        getDrawingHorizontalLine: (value) {
-                          return FlLine(
-                            color: AppTheme.borderGray.withOpacity(0.2),
-                            strokeWidth: 1,
-                          );
-                        },
-                      ),
+                      gridData: FlGridData(show: true, drawVerticalLine: false),
                       titlesData: FlTitlesData(
                         show: true,
                         bottomTitles: AxisTitles(
                           sideTitles: SideTitles(
                             showTitles: true,
-                            getTitlesWidget: (value, meta) {
-                              const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-                              if (value.toInt() < labels.length) {
-                                return Text(
-                                  labels[value.toInt()],
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 10,
-                                    color: AppTheme.textGray,
-                                  ),
-                                );
-                              }
-                              return const Text('');
-                            },
+                            getTitlesWidget: (value, meta) => _getBottomTitles(value, meta, _selectedPeriod),
                           ),
                         ),
                         leftTitles: AxisTitles(
                           sideTitles: SideTitles(
-                            showTitles: true,
-                            reservedSize: 50,
-                            getTitlesWidget: (value, meta) {
-                              return Text(
-                                '${(value / 1000).toStringAsFixed(0)}K',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 10,
-                                  color: AppTheme.textGray,
-                                ),
-                              );
-                            },
-                          ),
+                             showTitles: true, 
+                             reservedSize: 40,
+                             getTitlesWidget: (value, meta) {
+                               if (value == 0) return const SizedBox();
+                               return Text('${(value / 1000).toStringAsFixed(0)}K', style: TextStyle(fontSize: 10, color: Colors.grey));
+                             }
+                          )
                         ),
-                        topTitles: const AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
-                        ),
-                        rightTitles: const AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
-                        ),
+                        topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
                       ),
                       borderData: FlBorderData(show: false),
                       lineBarsData: [
                         LineChartBarData(
-                          spots: const [
-                            FlSpot(0, 35000),
-                            FlSpot(1, 42000),
-                            FlSpot(2, 31000),
-                            FlSpot(3, 48000),
-                            FlSpot(4, 36000),
-                            FlSpot(5, 41000),
-                            FlSpot(6, 17000),
-                          ],
+                          spots: _generateLineSpots(income, _selectedPeriod),
                           isCurved: true,
                           color: AppTheme.accentGreen,
                           barWidth: 3,
@@ -552,6 +461,28 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
         ],
       ),
     );
+  }
+
+  List<FlSpot> _generateLineSpots(List<Transaction> transactions, TimePeriod period) {
+     final Map<int, double> map = {};
+     for (var t in transactions) {
+        int xIndex = 0;
+        final date = t.date;
+        if (period == TimePeriod.thisWeek) {
+           xIndex = date.weekday % 7; 
+        } else {
+           xIndex = (date.day - 1) ~/ 7;
+        }
+        map[xIndex] = (map[xIndex] ?? 0) + t.amount;
+     }
+     
+     final List<FlSpot> spots = [];
+     int limit = period == TimePeriod.thisWeek ? 7 : 5;
+     
+     for (int i = 0; i < limit; i++) {
+        spots.add(FlSpot(i.toDouble(), map[i] ?? 0));
+     }
+     return spots;
   }
 
   Widget _buildSummaryItem(String label, String value, Color color, IconData icon) {
@@ -617,7 +548,7 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
                 ),
               ),
               Text(
-                'KES ${amount.toStringAsFixed(0)}',
+                'KES ${NumberFormat('#,##0').format(amount)}',
                 style: GoogleFonts.poppins(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
@@ -639,6 +570,122 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
         ],
       ),
     );
+  }
+
+  // --- Chart Helpers ---
+
+  double _calculateMaxY(List<Transaction> transactions) {
+     if (transactions.isEmpty) return 1000;
+     double maxVal = 0;
+     // Simple estimate: max single transaction * 1.5, or grouping max? 
+     // Better: pre-calc groups and find max. For now, static safe buffer relative to highest tx
+     for(var t in transactions) {
+       if(t.amount > maxVal) maxVal = t.amount;
+     }
+     return maxVal * 1.2;
+  }
+
+  Widget _getBottomTitles(double value, TitleMeta meta, TimePeriod period) {
+    // If This Week: Mon, Tue...
+    // If This Month: Week 1, 2...
+    final index = value.toInt();
+    String text = '';
+    
+    if (period == TimePeriod.thisWeek) {
+       const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']; 
+       // Adjusted to match weekday(1..7) logic or just 0..6
+       if (index >= 0 && index < days.length) text = days[index];
+    } else {
+       // Month/Year -> W1..W5
+       if (index >= 0 && index < 5) text = 'W${index + 1}';
+    }
+
+    return SideTitleWidget(
+      axisSide: meta.axisSide,
+      child: Text(text, style: GoogleFonts.poppins(fontSize: 10, color: AppTheme.textGray)),
+    );
+  }
+
+  List<BarChartGroupData> _generateBarGroups(List<Transaction> transactions, TimePeriod period) {
+     // Aggregate by x-axis index
+     final Map<int, double> incomeMap = {};
+     final Map<int, double> expenseMap = {};
+
+     for (var t in transactions) {
+        int xIndex = 0;
+        final date = t.date;
+        
+        if (period == TimePeriod.thisWeek) {
+           // 0=Sun, 6=Sat (or Mon-Sun)
+           xIndex = date.weekday % 7; // 7->0 (Sun), 1->1 (Mon)
+        } else {
+           // Month: Week of month (0..4)
+           xIndex = (date.day - 1) ~/ 7;
+        }
+        
+        if (t.type == TransactionType.income) {
+           incomeMap[xIndex] = (incomeMap[xIndex] ?? 0) + t.amount;
+        } else {
+           expenseMap[xIndex] = (expenseMap[xIndex] ?? 0) + t.amount;
+        }
+     }
+     
+     final List<BarChartGroupData> groups = [];
+     int limit = period == TimePeriod.thisWeek ? 7 : 5;
+     
+     for (int i = 0; i < limit; i++) {
+        groups.add(BarChartGroupData(
+           x: i,
+           barRods: [
+              BarChartRodData(toY: incomeMap[i] ?? 0, color: AppTheme.accentGreen, width: 8),
+              BarChartRodData(toY: expenseMap[i] ?? 0, color: AppTheme.accentRed, width: 8),
+           ],
+        ));
+     }
+     return groups;
+  }
+  
+  List<Widget> _buildTopSpendingCategories(List<Transaction> transactions) {
+     final expenses = transactions.where((t) => t.type == TransactionType.expense);
+     final totalExpense = expenses.fold(0.0, (sum, t) => sum + t.amount);
+     
+     if (totalExpense == 0) return [Text('No expense data', style: TextStyle(color: Colors.white54))];
+     
+     final grouped = groupBy(expenses, (Transaction t) => t.category);
+     final List<MapEntry<TransactionCategory, double>> sorted = [];
+     
+     grouped.forEach((key, list) {
+        sorted.add(MapEntry(key, list.fold(0.0, (sum, t) => sum + t.amount)));
+     });
+     
+     sorted.sort((a, b) => b.value.compareTo(a.value));
+     
+     return sorted.take(5).map((e) {
+        final catName = e.key.toString().split('.').last.toUpperCase();
+        final amount = e.value;
+        final percentage = amount / totalExpense;
+        
+        // Simple color rotation
+        return GestureDetector(
+          onTap: () {
+             final categoryTransactions = expenses
+                 .where((t) => t.category == e.key)
+                 .toList();
+                 
+             Navigator.push(
+               context,
+               MaterialPageRoute(
+                 builder: (context) => CategoryDetailScreen(
+                   categoryName: catName,
+                   categoryEnum: e.key,
+                   transactions: categoryTransactions,
+                 ),
+               ),
+             );
+          },
+          child: _buildCategoryRow(catName, amount, percentage, AppTheme.primaryGold),
+        );
+     }).toList();
   }
 }
 

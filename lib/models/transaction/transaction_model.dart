@@ -8,6 +8,8 @@ enum TransactionType {
   income,
   @HiveField(1)
   expense,
+  @HiveField(2)
+  transfer,
 }
 
 @HiveType(typeId: 3) // Ensure ID is unique

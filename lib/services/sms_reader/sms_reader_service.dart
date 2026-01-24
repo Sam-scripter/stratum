@@ -7,6 +7,9 @@ import '../../models/box_manager.dart';
 import '../../models/transaction/transaction_model.dart';
 import '../../models/account/account_model.dart';
 import '../pattern learning/pattern_learning_service.dart';
+import '../pattern learning/pattern_learning_service.dart';
+import 'unified_transaction_parser.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 /// Progress data for SMS scanning
 class SmsReadProgress {
@@ -34,8 +37,13 @@ class SmsReaderService {
   final SmsQuery _query = SmsQuery();
   final BoxManager _boxManager = BoxManager();
   final String userId;
+  final UnifiedTransactionParser _unifiedParser = UnifiedTransactionParser();
 
   SmsReaderService(this.userId);
+
+  void setUserNames(List<String> names) {
+    _unifiedParser.setUserNames(names);
+  }
 
   /// Request SMS permission from user
   Future<bool> requestSmsPermission() async {
@@ -211,13 +219,15 @@ class SmsReaderService {
             
             for (final m in senderMessages) {
               final body = m.body?.toLowerCase() ?? '';
-              if (body.contains('balance') || 
-                  body.contains('bal') || 
-                  body.contains('your account') || 
-                  body.contains('your card') ||
-                  body.contains('credited to your') ||
-                  body.contains('debited from your') ||
-                  body.contains('new m-pesa balance')) { // MPESA specific
+              // STROK: Only consider it an account if we see explicit balance or account indicators
+              // We avoid "Your M-Pesa payment" (which is just a receipt)
+              if (body.contains('avail bal') || 
+                  body.contains('available balance') ||
+                  body.contains('new m-pesa balance') ||
+                  (body.contains('balance') && (body.contains('is') || body.contains(':'))) ||
+                  body.contains('credited to your account') ||
+                  body.contains('debited from your account') ||
+                  body.contains('withdraw') && body.contains('from')) {
                   isOwnedAccount = true;
                   break;
               }
@@ -327,6 +337,12 @@ class SmsReaderService {
       
       print('Scanning recent messages. Last scan: $lastScanDate');
 
+      // Update parser with current user names for self-transfer detection
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null && user.displayName != null && user.displayName!.isNotEmpty) {
+        _unifiedParser.setUserNames(user.displayName!.split(' '));
+      }
+
       // Note: flutter_sms_inbox doesn't support server-side filtering by date reliably across all Android versions
       // So we fetch a batch and filter client-side.
       
@@ -376,7 +392,8 @@ class SmsReaderService {
       }
 
       if (allTransactions.isNotEmpty) {
-        await _saveTransactions(allTransactions);
+        // Recent scan (Live) -> Enable Auto Transfers (Cash creation)
+        await _saveTransactions(allTransactions, enableAutoTransfers: true);
       }
       
       return transactionsFound;
@@ -519,13 +536,14 @@ class SmsReaderService {
       }
     }
 
-    // Parse using patterns
-    final transaction = _parseFinancialSms(
-      address,
-      body,
-      date,
-      account.id,
-      accountType,
+    // Parse using unified parser
+    final transaction = await _unifiedParser.parseMessage(
+      address: address,
+      body: body,
+      date: date,
+      accountId: account.id,
+      userId: userId,
+      accountType: accountType,
     );
 
     // we don't update balance here, we do it in saveTransactions to be safe and efficient
@@ -533,436 +551,13 @@ class SmsReaderService {
     return transaction;
   }
 
-  /// Parse financial SMS using patterns
-  Transaction? _parseFinancialSms(
-    String address,
-    String body,
-    DateTime date,
-    String accountId,
-    String accountType,
-  ) {
-    // Check for learned pattern first
-    final pattern = PatternLearningService.learnPattern(body, '');
-    final learnedCategory = PatternLearningService.getCategoryForPattern(
-      pattern,
-      accountType,
-      userId,
-    );
 
-    if (accountType == 'MPESA') {
-      return _parseMpesaSms(body, date, accountId, learnedCategory);
-    } else if (accountType == 'KCB') {
-      return _parseKcbSms(body, date, accountId, learnedCategory);
-    }
-
-    return null;
-  }
-
-  /// Parse MPESA SMS
-  Transaction? _parseMpesaSms(
-    String body,
-    DateTime date,
-    String accountId,
-    String? learnedCategory,
-  ) {
-    const uuid = Uuid();
-
-    // Reversal Pattern
-    final mpesaReversalPattern = RegExp(
-      r'([A-Z0-9]+)\s+Confirmed\.\s*Reversal of transaction [A-Z0-9]+ has been successfully reversed.*?New M-PESA balance is Ksh([\d,]+\.\d{2})',
-      caseSensitive: false,
-    );
-     // Alternative generic reversal detection if the above is too specific
-    if (body.toLowerCase().contains('reversal of') && 
-        body.toLowerCase().contains('confirmed')) {
-        
-        // Try to extract amount and balance
-        final amountPattern = RegExp(r'Ksh([\d,]+\.\d{2})');
-        final matches = amountPattern.allMatches(body).toList();
-        
-        if (matches.length >= 2) {
-           // Assume first money is amount reversed, last is balance
-           // This is a heuristic. Mpesa reversal messages vary.
-           // "OT82... Confirmed. Reversal of transaction OT82... of Ksh30,000.00 to ... has been successfully reversed. New M-PESA balance is Ksh45,000.00"
-           
-           // If we matched the explicit regex, we can be more precise, but let's try a robust flexible approach
-           String? reference;
-           double? amount;
-           double? balance;
-           
-           final refMatch = RegExp(r'^([A-Z0-9]+)').firstMatch(body);
-           reference = refMatch?.group(1);
-           
-           if (matches.isNotEmpty) {
-             // Let's use the explicit matches if possible
-             final amountStr = matches.length > 1 ? matches[matches.length - 2]
-                 .group(1) : matches.first.group(1);
-             final balanceStr = matches.last.group(1);
-
-             if (amountStr != null)
-               amount = double.parse(amountStr.replaceAll(',', ''));
-             if (balanceStr != null)
-               balance = double.parse(balanceStr.replaceAll(',', ''));
-
-             if (amount != null) {
-               return Transaction(
-                 id: uuid.v4(),
-                 title: 'Reversal / Refund',
-                 amount: amount,
-                 type: TransactionType.income,
-                 category: TransactionCategory.other,
-                 // Or Refund if added
-                 recipient: 'M-PESA',
-                 originalSms: body,
-                 newBalance: balance,
-                 date: date,
-                 accountId: accountId,
-                 reference: reference,
-                 description: 'Reversal of previous transaction',
-               );
-             }
-           }
-        }
-    }
-
-    // M-PESA Patterns
-    final mpesaSentPattern = RegExp(
-      r'([A-Z0-9]+)\s+Confirmed\.\s*Ksh([\d,]+\.\d{2})\s+(?:paid to|sent to)\s+([^.]+?)(?:\s+on\s+[\d/]+\s+at\s+[\d:]+\s+[AP]M)?\.?\s*New M-PESA balance is Ksh([\d,]+\.\d{2})',
-      caseSensitive: false,
-    );
-
-    final mpesaReceivedPattern = RegExp(
-      r'([A-Z0-9]+)\s+Confirmed\.?\s*You have received Ksh([\d,]+\.\d{2})\s+from\s+([^.]+?)(?:\s+[\d/]+\s+at\s+[\d:]+\s+[AP]M)?\.?\s*New M-PESA balance is Ksh([\d,]+\.\d{2})',
-      caseSensitive: false,
-    );
-
-    final mpesaWithdrawPattern = RegExp(
-      r'([A-Z0-9]+)\s+[Cc]onfirmed\.?\s*Ksh([\d,]+\.\d{2})\s+withdrawn from\s+([^.]+?)(?:\s+on\s+[\d/]+)?\.?\s*New M-PESA balance is Ksh([\d,]+\.\d{2})',
-      caseSensitive: false,
-    );
-
-    final mpesaBuyPattern = RegExp(
-      r'([A-Z0-9]+)\s+confirmed\.?\s*You bought Ksh([\d,]+\.\d{2})\s+of\s+([^.]+?)(?:\s+on\s+[\d/]+\s+at\s+[\d:]+)?\.?\s*New M-PESA balance is Ksh([\d,]+\.\d{2})',
-      caseSensitive: false,
-    );
-    
-    // New regex for simple airtime purchase: "You bought Ksh 20.00 of airtime on..."
-    final mpesaAirtimePattern = RegExp(
-      r'([A-Z0-9]+)\s+Confirmed\.?\s*You\s+bought\s+Ksh([\d,]+\.\d{2})\s+of\s+airtime\s+on\s+[\d/]+\s+at\s+[\d:]+\s+[AP]M\.?\s*New M-PESA balance is Ksh([\d,]+\.\d{2})',
-      caseSensitive: false,
-    );
-
-    double parseAmount(String amountStr) {
-      return double.parse(amountStr.replaceAll(',', ''));
-    }
-
-    TransactionCategory categorizeRecipient(String recipient) {
-      final lower = recipient.toLowerCase();
-      if (lower.contains('safaricom') || lower.contains('airtime')) {
-        return TransactionCategory.utilities;
-      }
-      if (lower.contains('kplc') ||
-          lower.contains('power') ||
-          lower.contains('electricity')) {
-        return TransactionCategory.utilities;
-      }
-      if (lower.contains('water')) return TransactionCategory.utilities;
-      if (lower.contains('rent')) return TransactionCategory.other;
-      if (lower.contains('pharmacy') ||
-          lower.contains('hospital') ||
-          lower.contains('clinic')) {
-        return TransactionCategory.health;
-      }
-      if (lower.contains('school') ||
-          lower.contains('university') ||
-          lower.contains('college')) {
-        return TransactionCategory.other;
-      }
-      if (lower.contains('supermarket') ||
-          lower.contains('shop') ||
-          lower.contains('store')) {
-        return TransactionCategory.shopping;
-      }
-      if (lower.contains('restaurant') ||
-          lower.contains('cafe') ||
-          lower.contains('hotel')) {
-        return TransactionCategory.dining;
-      }
-      if (lower.contains('agent')) return TransactionCategory.other;
-      return TransactionCategory.general;
-    }
-
-    // Try sent/paid pattern
-    var match = mpesaSentPattern.firstMatch(body);
-    if (match != null) {
-      final reference = match.group(1)!;
-      final amount = parseAmount(match.group(2)!);
-      final recipient = match.group(3)!.trim();
-      final balance = parseAmount(match.group(4)!);
-
-      TransactionCategory category = learnedCategory != null
-          ? (PatternLearningService.categoryFromString(learnedCategory) ??
-                categorizeRecipient(recipient))
-          : categorizeRecipient(recipient);
-
-      return Transaction(
-        id: uuid.v4(),
-        title: recipient,
-        amount: amount,
-        type: TransactionType.expense,
-        category: category,
-        recipient: recipient,
-        originalSms: body,
-        newBalance: balance,
-        date: date,
-        accountId: accountId,
-        reference: reference,
-      );
-    }
-
-    // Try received pattern
-    match = mpesaReceivedPattern.firstMatch(body);
-    if (match != null) {
-      final reference = match.group(1)!;
-      final amount = parseAmount(match.group(2)!);
-      final sender = match.group(3)!.trim();
-      final balance = parseAmount(match.group(4)!);
-
-      return Transaction(
-        id: uuid.v4(),
-        title: 'Received from $sender',
-        amount: amount,
-        type: TransactionType.income,
-        category: TransactionCategory.salary,
-        recipient: sender,
-        originalSms: body,
-        newBalance: balance,
-        date: date,
-        accountId: accountId,
-        reference: reference,
-      );
-    }
-
-    // Try withdraw pattern
-    match = mpesaWithdrawPattern.firstMatch(body);
-    if (match != null) {
-      final reference = match.group(1)!;
-      final amount = parseAmount(match.group(2)!);
-      final agent = match.group(3)!.trim();
-      final balance = parseAmount(match.group(4)!);
-
-      return Transaction(
-        id: uuid.v4(),
-        title: 'Withdrawn from $agent',
-        amount: amount,
-        type: TransactionType.expense,
-        category: TransactionCategory.other,
-        recipient: agent,
-        originalSms: body,
-        newBalance: balance,
-        date: date,
-        accountId: accountId,
-        reference: reference,
-      );
-    }
-
-
-    
-    // Try simple airtime pattern first
-    match = mpesaAirtimePattern.firstMatch(body);
-    if (match != null) {
-      final reference = match.group(1)!;
-      final amount = parseAmount(match.group(2)!);
-      final balance = parseAmount(match.group(3)!);
-      
-      return Transaction(
-        id: uuid.v4(),
-        title: 'Airtime Purchase',
-        amount: amount,
-        type: TransactionType.expense,
-        category: TransactionCategory.utilities,
-        recipient: 'Safaricom Airtime',
-        originalSms: body,
-        newBalance: balance,
-        date: date,
-        accountId: accountId,
-        reference: reference,
-      );
-    }
-
-    // Try buy airtime/bundles pattern
-    match = mpesaBuyPattern.firstMatch(body);
-    if (match != null) {
-      final reference = match.group(1)!;
-      final amount = parseAmount(match.group(2)!);
-      final item = match.group(3)!.trim();
-      final balance = parseAmount(match.group(4)!);
-
-      return Transaction(
-        id: uuid.v4(),
-        title: item,
-        amount: amount,
-        type: TransactionType.expense,
-        category: item.toLowerCase().contains('airtime')
-            ? TransactionCategory.utilities
-            : TransactionCategory.shopping,
-        recipient: item,
-        originalSms: body,
-        newBalance: balance,
-        date: date,
-        accountId: accountId,
-        reference: reference,
-      );
-    }
-
-    return null;
-  }
-
-  /// Parse KCB SMS
-  Transaction? _parseKcbSms(
-    String body,
-    DateTime date,
-    String accountId,
-    String? learnedCategory,
-  ) {
-    const uuid = Uuid();
-
-    // Balance Regex
-    final kcbBalancePattern = RegExp(
-      r'Avail(?:able)?\.?\s*Bal(?:ance)?\s*(?:is|:)?\s*(?:KES|Ksh)\.?\s*([\d,]+\.\d{2})',
-      caseSensitive: false,
-    );
-     // Try to find balance
-    double? balance;
-    final balanceMatch = kcbBalancePattern.firstMatch(body);
-    if (balanceMatch != null) {
-      balance = double.parse(balanceMatch.group(1)!.replaceAll(',', ''));
-    }
-
-    // Amount Regex
-    final amountPattern = RegExp(
-      r'(?:KES|Ksh)\.?\s*([\d,]+\.\d{2})',
-      caseSensitive: false,
-    );
-    // Be careful not to pick up the balance as the amount if it's the only number
-    // Usually amount comes before balance.
-    
-    // Detect Transaction Fee
-    // "Transaction cost KES 15.00"
-    double fee = 0.0;
-    final feePattern = RegExp(
-      r'Transaction cost\s+(?:KES|Ksh)\.?\s*([\d,]+\.\d{2})', 
-      caseSensitive: false
-    );
-    final feeMatch = feePattern.firstMatch(body);
-    if (feeMatch != null) {
-      fee = double.parse(feeMatch.group(1)!.replaceAll(',', ''));
-    }
-
-    // Extract all amounts
-    final allAmountMatches = amountPattern.allMatches(body).toList();
-    
-    if (allAmountMatches.isEmpty) return null;
-
-    // Logic to identify the main transaction amount vs fee vs balance
-    // Example: "Your SEND TO M-PESA... KES 1,350.00... Transaction cost KES 15.00... Avail Bal KES 27,888.18"
-    
-    double amount = 0.0;
-    // Better KCB specific patterns based on user examples:
-    
-    // 1. "KES 80.00 transaction made on KCB card..." (Debit)
-    final cardDebitPattern = RegExp(
-      r'(?:KES|Ksh)\.?\s*([\d,]+\.\d{2})\s+transaction made on',
-      caseSensitive: false
-    );
-    
-    // 2. "Your KCB credit card... transaction KES 80.00... has been reversed" (Reversal)
-    final reversalPattern = RegExp(
-      r'transaction\s+(?:KES|Ksh)\.?\s*([\d,]+\.\d{2})\s+.*reversed',
-      caseSensitive: false
-    );
-    
-    // 3. "Your SEND TO M-PESA request of KES 1,350.00..."
-    final sendMoneyPattern = RegExp(
-      r'request of\s+(?:KES|Ksh)\.?\s*([\d,]+\.\d{2})',
-      caseSensitive: false
-    );
-    
-    TransactionType type = TransactionType.expense;
-    String title = 'KCB Transaction';
-    String description = '';
-
-    var match = reversalPattern.firstMatch(body);
-    if (match != null) {
-       amount = double.parse(match.group(1)!.replaceAll(',', ''));
-       type = TransactionType.income; // Reversals are income/refunds
-       title = 'Reversal / Refund';
-       description = 'Reversal of prior transaction';
-    } else {
-       match = cardDebitPattern.firstMatch(body);
-       if (match != null) {
-         amount = double.parse(match.group(1)!.replaceAll(',', ''));
-         type = TransactionType.expense;
-         title = 'Card Payment';
-       } else {
-         match = sendMoneyPattern.firstMatch(body);
-         if (match != null) {
-           amount = double.parse(match.group(1)!.replaceAll(',', ''));
-           type = TransactionType.expense;
-           // Extract recipient if possible
-           final recipientMatch = RegExp(r'to\s+([^-]+)-\s*([A-Z\s]+)').firstMatch(body);
-           if (recipientMatch != null) {
-             title = 'Sent to ${recipientMatch.group(2)?.trim() ?? "M-PESA"}';
-           } else {
-             title = 'Sent to M-PESA';
-           }
-         } else {
-            // Fallback: Use first amount found that isn't fee or balance
-            // This is risky but better than nothing
-            for (final m in allAmountMatches) {
-               final val = double.parse(m.group(1)!.replaceAll(',', ''));
-               if (val != balance && val != fee) {
-                 amount = val;
-                 break;
-               }
-            }
-         }
-       }
-    }
-    
-    // Apply Fee if it's an expense
-    if (fee > 0 && type == TransactionType.expense) {
-      amount += fee; // Total deduction includes fee
-      description = '$description (Includes Fee: KES $fee)'.trim();
-    }
-    
-    // Check for income keywords if specific patterns failed but we have an amount
-    if (match == null && (body.toLowerCase().contains('credited') || body.toLowerCase().contains('received'))) {
-       type = TransactionType.income;
-       title = 'Money Received';
-    }
-
-    TransactionCategory category = learnedCategory != null
-        ? (PatternLearningService.categoryFromString(learnedCategory) ??
-              TransactionCategory.general)
-        : TransactionCategory.general;
-
-    return Transaction(
-      id: uuid.v4(),
-      title: title,
-      amount: amount,
-      type: type,
-      category: category,
-      originalSms: body,
-      newBalance: balance, // Can be null, reconcileBalances will handle it
-      date: date,
-      accountId: accountId,
-      description: description,
-    );
-  }
 
   /// Save transactions and update account balances
-  Future<void> _saveTransactions(List<Transaction> transactions) async {
+  Future<void> _saveTransactions(
+    List<Transaction> transactions, {
+    bool enableAutoTransfers = false,
+  }) async {
     if (transactions.isEmpty) return;
 
     await _boxManager.openAllBoxes(userId);
@@ -979,19 +574,37 @@ class SmsReaderService {
     final Set<String> affectedAccountIds = {};
     
     for (var transaction in transactions) {
-      // Check for duplicates
+      // Logic for Historical vs Future Transfers
+      Transaction finalTransaction = transaction;
+
+      if (!enableAutoTransfers && transaction.type == TransactionType.transfer) {
+         // Downgrade Transfer -> Expense for historical data
+         // This prevents creating Cash accounts for old withdrawals
+         finalTransaction = transaction.copyWith(
+           type: TransactionType.expense,
+           // Keep category as 'transfer' or change to 'general'? 
+           // Leave category as transfer so user sees "Transfer" icon but logic treats as Expense (No counterpart)
+         );
+      }
+
+      // Check for duplicates using finalTransaction
       final isDuplicate = transactionsBox.values.any(
         (t) =>
             t.date.millisecondsSinceEpoch ==
-                transaction.date.millisecondsSinceEpoch &&
-            t.amount == transaction.amount &&
-            t.accountId == transaction.accountId,
+                finalTransaction.date.millisecondsSinceEpoch &&
+            t.amount == finalTransaction.amount &&
+            t.accountId == finalTransaction.accountId,
       );
 
       if (!isDuplicate) {
-        transactionsBox.put(transaction.id, transaction);
-        if (transaction.accountId != null) {
-          affectedAccountIds.add(transaction.accountId!);
+        transactionsBox.put(finalTransaction.id, finalTransaction);
+        if (finalTransaction.accountId != null) {
+          affectedAccountIds.add(finalTransaction.accountId!);
+        }
+
+        // Handle Transfer Logic (Auto-create Cash Deposit) - ONLY IF ENABLED
+        if (enableAutoTransfers && finalTransaction.type == TransactionType.transfer) {
+          await _handleTransferCounterpart(finalTransaction, accountsBox, transactionsBox, affectedAccountIds);
         }
       }
     }
@@ -999,42 +612,69 @@ class SmsReaderService {
     // Trigger reconciliation for all affected accounts
     for (final accountId in affectedAccountIds) {
       await reconcileBalances(accountId);
+      
+      // Also force recalculation to be safe (since we might have added a counterpart)
+      // This is slightly inefficient but specific to the updated accounts
+      // _recalculateBalancesFromTransactions handles the "Anchor + Delta" logic correctly.
+      // We can rely on _recalculateBalancesFromTransactions being called generally or just rely on this:
     }
-
-    // Update account balances
-    final Map<String, Transaction> mostRecentByAccount = {};
-
-    for (var transaction in transactionsBox.values) {
-      if (transaction.newBalance == null || transaction.accountId.isEmpty)
-        continue;
-
-      final existing = mostRecentByAccount[transaction.accountId];
-      if (existing == null || transaction.date.isAfter(existing.date)) {
-        mostRecentByAccount[transaction.accountId] = transaction;
-      }
-    }
-
-    // Update balance for each account
-    for (var entry in mostRecentByAccount.entries) {
-      try {
-        final account = accountsBox.values.firstWhere(
-          (acc) => acc.id == entry.key,
-        );
-
-        if (entry.value.newBalance != null && entry.value.newBalance! > 0) {
-          final updated = account.copyWith(
-            balance: entry.value.newBalance!,
-            lastUpdated: entry.value.date,
-          );
-          accountsBox.put(account.id, updated);
-        }
-      } catch (e) {
-        // Account not found, skip
-      }
-    }
-
-    // Recalculate balances as fallback
+    
+    // Ensuring global consistency
     _recalculateBalancesFromTransactions(accountsBox, transactionsBox);
+  }
+
+  /// Helper to handle Transfer counterparts (e.g. MPESA Withdrawal -> Cash Deposit)
+  Future<void> _handleTransferCounterpart(
+    Transaction original,
+    Box<Account> accountsBox,
+    Box<Transaction> transactionsBox,
+    Set<String> affectedAccountIds,
+  ) async {
+    // 1. Find or Create 'Cash' account
+    Account? cashAccount;
+    try {
+      cashAccount = accountsBox.values.firstWhere(
+        (a) => a.name.toUpperCase() == 'CASH' || a.name.toUpperCase() == 'WALLET',
+      );
+    } catch (_) {
+      // Create if missing
+      cashAccount = Account(
+        id: const Uuid().v4(),
+        name: 'Cash',
+        balance: 0.0,
+        type: AccountType.Cash,
+        lastUpdated: DateTime.now(),
+        senderAddress: 'MANUAL', // Required field
+        isAutomated: true,
+      );
+      accountsBox.put(cashAccount.id, cashAccount);
+    }
+
+    // 2. Create Counterpart Transaction (Income)
+    // Check if counterpart already exists to avoid duplication
+    final isDuplicate = transactionsBox.values.any((t) => 
+        t.reference == original.reference && 
+        t.accountId == cashAccount!.id &&
+        t.type == TransactionType.income
+    );
+
+    if (!isDuplicate) {
+      final counterpart = Transaction(
+        id: const Uuid().v4(),
+        title: 'Transfer from ${original.recipient ?? "Account"}', 
+        amount: original.amount, 
+        type: TransactionType.income, 
+        category: TransactionCategory.transfer,
+        recipient: 'Self',
+        date: original.date, 
+        accountId: cashAccount!.id,
+        description: 'Auto-transfer from Withdrawal',
+        reference: original.reference,
+      );
+      
+      transactionsBox.put(counterpart.id, counterpart);
+      affectedAccountIds.add(cashAccount.id);
+    }
   }
 
   /// Process a single new SMS message
@@ -1096,28 +736,55 @@ class SmsReaderService {
     Box<Account> accountsBox,
     Box<Transaction> transactionsBox,
   ) {
-    final Map<String, Transaction> latestWithBalance = {};
-    for (var transaction in transactionsBox.values) {
-      if (transaction.newBalance == null || transaction.newBalance! <= 0)
-        continue;
-      final existing = latestWithBalance[transaction.accountId];
-      if (existing == null || transaction.date.isAfter(existing.date)) {
-        latestWithBalance[transaction.accountId] = transaction;
-      }
+    // Group by account
+    final Map<String, List<Transaction>> accountTransactions = {};
+    for (var t in transactionsBox.values) {
+      accountTransactions.putIfAbsent(t.accountId, () => []).add(t);
     }
 
-    for (var entry in latestWithBalance.entries) {
+    // Process each account
+    for (var entry in accountTransactions.entries) {
+      final accountId = entry.key;
+      final txs = entry.value;
+      
+      // Sort chronological (Oldest First)
+      txs.sort((a, b) => a.date.compareTo(b.date));
+
+      double currentBalance = 0.0;
+      DateTime? lastUpdate;
+      
+      // We need to find the *latest* anchor point to be efficient, or just replay all.
+      // Replaying all is safer to ensure consistency.
+      
+      for (var t in txs) {
+        if (t.newBalance != null) {
+          // Anchor Point: Reset balance
+          currentBalance = t.newBalance!;
+        } else {
+          // Delta Point: Apply change
+          if (t.type == TransactionType.income) {
+            currentBalance += t.amount;
+          } else {
+            currentBalance -= t.amount;
+          }
+        }
+        lastUpdate = t.date;
+      }
+
       try {
         final account = accountsBox.values.firstWhere(
-          (acc) => acc.id == entry.key,
+          (acc) => acc.id == accountId,
         );
 
-        if (entry.value.newBalance != null) {
-          final updated = account.copyWith(
-            balance: entry.value.newBalance!,
-            lastUpdated: entry.value.date,
+        // Only update if changed or newer
+        // (Floating point comparison epsilon check ideally, but direct is fine for now)
+        if (account.balance != currentBalance) {
+           final updated = account.copyWith(
+            balance: currentBalance,
+            lastUpdated: lastUpdate ?? account.lastUpdated,
           );
           accountsBox.put(account.id, updated);
+          print('Reconciled Account: ${account.name} -> KES $currentBalance');
         }
       } catch (e) {
         // Account not found, skip

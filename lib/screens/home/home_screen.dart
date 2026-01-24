@@ -1,21 +1,31 @@
 import 'dart:async';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+import 'package:stratum/repositories/financial_repository.dart';
+import 'package:stratum/screens/accounts/account_detail_screen.dart';
+import 'package:stratum/screens/accounts/add_account_screen.dart';
+import 'package:stratum/screens/notifications/notifications_screen.dart';
+import 'package:stratum/screens/settings/name_aliases_screen.dart';
 import 'package:stratum/screens/transactions/add_transaction_screen.dart';
 import 'package:stratum/screens/transactions/transaction_detail_screen.dart';
-import 'package:provider/provider.dart';
-import 'package:stratum/repositories/financial_repository.dart';
-import 'package:intl/intl.dart';
+
 import '../../models/account/account_model.dart';
 import '../../models/transaction/transaction_model.dart';
 import '../../services/finances/financial_service.dart';
 import '../transactions/transactions_screen.dart';
 import '../reports/reports_screen.dart';
 import '../ai_advisor/ai_advisor_screen.dart';
-import '../notifications/notifications_screen.dart';
+import '../onboarding/sms_scanning_screen.dart';
+import '../budgets/budget_screen.dart';
+import '../../services/finances/budget_service.dart';
+import '../../theme/app_theme.dart';
 import '../accounts/account_detail_screen.dart';
 import '../onboarding/sms_scanning_screen.dart';
 import '../accounts/add_account_screen.dart';
@@ -231,51 +241,79 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                 ],
               ),
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1A2332),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white.withOpacity(0.1)),
-                ),
-                child: Stack(
-                  children: [
-                    GestureDetector(
-                      onTap: () {
+              Row(
+                children: [
+                  // Settings Button
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A2332),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white.withOpacity(0.1)),
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.settings, color: Colors.white, size: 22),
+                      padding: EdgeInsets.zero,
+                      onPressed: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const NotificationsScreen(),
+                            builder: (context) => const NameAliasesScreen(),
                           ),
                         );
                       },
-                      child: const Center(
-                        child: Icon(
-                          Icons.notifications_outlined,
-                          color: Colors.white,
-                          size: 22,
-                        ),
-                      ),
                     ),
-                    Positioned(
-                      top: 8,
-                      right: 8,
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: AppTheme.accentRed,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: const Color(0xFF0A1628),
-                            width: 1.5,
+                  ),
+                  const SizedBox(width: 12),
+                  // Notifications Button
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A2332),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white.withOpacity(0.1)),
+                    ),
+                    child: Stack(
+                      children: [
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const NotificationsScreen(),
+                              ),
+                            );
+                          },
+                          child: const Center(
+                             child: Icon(
+                              Icons.notifications_outlined,
+                              color: Colors.white,
+                              size: 22,
+                            ),
                           ),
                         ),
-                      ),
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: AppTheme.accentRed,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: const Color(0xFF0A1628),
+                                width: 1.5,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ],
           ),

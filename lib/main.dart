@@ -90,42 +90,16 @@ class AuthWrapper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // We can now just check the User provided by StreamProvider
-    // But accessing it via context.watch<User?>() is cleaner or simpler StreamBuilder
-    
     final user = context.watch<User?>();
     
-    // Check loading state? 
-    // StreamProvider initialData usage might mean we don't have "loading" state easily distinguished from null if we set initialData null.
-    // But for Auth, null usually means not logged in.
-    // However, fast switching might flicker.
-    // Let's rely on the fact that if user is null we show splash/login.
-    
-    // If we want a true Splash vs Login screen differentiation, we might need a separate mechanism.
-    // For now, let's assume null = not logged in (or loading finished and no user).
-    // Ideally we should check connection state, but StreamProvider hides that.
-    
-    // Fallback to simpler StreamBuilder if we want ConnectionState check specifically for "Waiting".
-    // But `StreamProvider` is good.
-    
     if (user != null) {
+      // User is logged in, check if we have a pending notification to navigate to
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+         NotificationService.instance.consumePendingTransaction();
+      });
       return const MainScreen();
     }
     
-    // If user is null, it could be loading OR logged out.
-    // Since FirebaseAuth.instance.currentUser is passed as initialData,
-    // we likely know the state immediately if initialized.
-    
-    // TODO: Add Logic to differentiate Unauthenticated vs Loading if needed.
-    // For now, assuming Unauthenticated -> SplashScreen (which redirects to Login usually? Or shows Login?)
-    // Wait, SplashScreen in this app was checking authStateChanges itself.
-    
-    // Let's look at legacy AuthWrapper logic.
-    // It returned SplashScreen if waiting.
-    // If no data, it returned SplashScreen.
-    
-    // Effectively, this app doesn't seem to have a dedicated LoginScreen in this path? 
-    // Or SplashScreen handles navigation?
-    // Let's assume SplashScreen handles redirection if not logged in.
     return const SplashScreen();
   }
 }
