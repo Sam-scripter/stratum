@@ -15,6 +15,9 @@ import 'package:stratum/screens/notifications/notifications_screen.dart';
 import 'package:stratum/screens/settings/name_aliases_screen.dart';
 import 'package:stratum/screens/transactions/add_transaction_screen.dart';
 import 'package:stratum/screens/transactions/transaction_detail_screen.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import '../../models/box_manager.dart';
+import '../../models/notification/notification_model.dart';
 
 import '../../models/account/account_model.dart';
 import '../../models/transaction/transaction_model.dart';
@@ -262,42 +265,52 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: Colors.white.withOpacity(0.1)),
                     ),
-                    child: Stack(
-                      children: [
-                        GestureDetector(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const NotificationsScreen(),
-                              ),
-                            );
-                          },
-                          child: const Center(
-                             child: Icon(
-                              Icons.notifications_outlined,
-                              color: Colors.white,
-                              size: 22,
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          top: 8,
-                          right: 8,
-                          child: Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: AppTheme.accentRed,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: const Color(0xFF0A1628),
-                                width: 1.5,
+                    child: ValueListenableBuilder<Box<NotificationModel>>(
+                      valueListenable: BoxManager().getBox<NotificationModel>(
+                        BoxManager.notificationsBoxName,
+                        FirebaseAuth.instance.currentUser?.uid ?? '',
+                      ).listenable(),
+                      builder: (context, box, _) {
+                        final unreadCount = box.values.where((n) => !n.isRead).length;
+                        return Stack(
+                          children: [
+                            GestureDetector(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const NotificationsScreen(),
+                                  ),
+                                );
+                              },
+                              child: const Center(
+                                child: Icon(
+                                  Icons.notifications_outlined,
+                                  color: Colors.white,
+                                  size: 22,
+                                ),
                               ),
                             ),
-                          ),
-                        ),
-                      ],
+                            if (unreadCount > 0)
+                              Positioned(
+                                top: 8,
+                                right: 8,
+                                child: Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.accentRed,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: const Color(0xFF0A1628),
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        );
+                      }
                     ),
                   ),
                 ],

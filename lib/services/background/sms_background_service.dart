@@ -90,6 +90,9 @@ class BackgroundSmsService {
     if (userId != null) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('background_service_user_id', userId);
+      
+      // Notify running service about the user ID change immediately
+      service.invoke('setUserId', {'userId': userId});
     }
     
     if (!(await service.isRunning())) {
@@ -113,7 +116,21 @@ class BackgroundSmsService {
     BoxManager.registerAdapters();
     
     final prefs = await SharedPreferences.getInstance();
-    final userId = prefs.getString('background_service_user_id');
+    String? userId = prefs.getString('background_service_user_id');
+    
+    // Listen for dynamic user ID updates from the UI isolate
+    service.on('setUserId').listen((event) async {
+      if (event != null && event.containsKey('userId')) {
+        userId = event['userId'] as String?;
+        print('Background Service: Updated User ID to $userId');
+        
+        // Persist it as well
+        if (userId != null) {
+           final p = await SharedPreferences.getInstance();
+           await p.setString('background_service_user_id', userId!);
+        }
+      }
+    });
     
     if (userId == null) {
       print('Background Service: checking for user ID...');
@@ -213,26 +230,8 @@ class BackgroundSmsService {
           );
 
           if (transaction != null) {
-              // Create and save notification (NotificationService doesn't save to Hive, it just shows)
-              // We need to persist the notification so it shows up in "Notifications Screen" if we have one.
-              // Assuming BoxManager is open:
-              
-               final notification = NotificationModel(
-                 id: const Uuid().v4(),
-                 title: 'New Transaction',
-                 body: '${transaction.type == TransactionType.income ? '+' : '-'}${transaction.amount} from ${transaction.title}',
-                 timestamp: DateTime.now(),
-                 transactionId: transaction.id,
-                 isRead: false,
-               );
-               
-               final notificationsBox = boxManager.getBox<NotificationModel>(
-                 BoxManager.notificationsBoxName,
-                 userId,
-               );
-               notificationsBox.put(notification.id, notification);
-
                // Show a rich notification
+               // Note: The NotificationModel is now saved inside processSingleSms
                _showLocalNotification(notificationsPlugin, transaction);
           }
         }

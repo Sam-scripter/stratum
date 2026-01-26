@@ -10,6 +10,7 @@ import '../pattern learning/pattern_learning_service.dart';
 import '../pattern learning/pattern_learning_service.dart';
 import 'unified_transaction_parser.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../models/notification/notification_model.dart';
 
 /// Progress data for SMS scanning
 class SmsReadProgress {
@@ -725,6 +726,22 @@ class SmsReaderService {
         } catch (e) {
           // Account not found
         }
+        
+        // Create Notification Record (Centralized Logic)
+        final notificationsBox = _boxManager.getBox<NotificationModel>(
+          BoxManager.notificationsBoxName,
+          userId,
+        );
+
+        final notification = NotificationModel(
+          id: const Uuid().v4(),
+          title: 'New Transaction',
+          body: '${transaction.type == TransactionType.income ? '+' : '-'}${transaction.amount.toStringAsFixed(0)} from ${transaction.title}',
+          timestamp: DateTime.now(),
+          transactionId: transaction.id,
+          isRead: false,
+        );
+        notificationsBox.put(notification.id, notification);
       }
       return transaction;
     }

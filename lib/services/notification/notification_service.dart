@@ -159,7 +159,11 @@ class NotificationService {
   Future<void> _navigateToTransaction(String transactionId) async {
     try {
       final userId = FirebaseAuth.instance.currentUser?.uid;
-      if (userId == null) return;
+      if (userId == null) {
+        print("Notification Nav: User not logged in, queueing.");
+        _pendingTransactionId = transactionId;
+        return;
+      }
       
       final boxManager = BoxManager();
       // Ensure box is open (might be redundant but safe)
@@ -170,14 +174,28 @@ class NotificationService {
       final box = boxManager.getBox<Transaction>(BoxManager.transactionsBoxName, userId);
       final transaction = box.get(transactionId);
       
-      if (transaction != null && navigatorKey.currentState != null) {
+      // Retry logic for navigation context
+      int retries = 0;
+      while (navigatorKey.currentState == null && retries < 3) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        retries++;
+      }
+
+      if (navigatorKey.currentState != null) {
+        if (transaction != null) {
+          print("Notification Nav: Navigating to transaction $transactionId");
           navigatorKey.currentState!.push(
             MaterialPageRoute(
               builder: (context) => TransactionDetailScreen(transaction: transaction),
             ),
           );
+        } else {
+             print("Notification Nav: Transaction not found in Hive (ID: $transactionId)");
+             // Optionally fetch from backend if strictly needed, but local-first means it should be there.
+        }
       } else {
-        print("Transaction not found or navigator invalid");
+        print("Notification Nav: Navigator State is null after retries.");
+        _pendingTransactionId = transactionId; // Queue for next usable state
       }
     } catch (e) {
       print('Error navigating to transaction: $e');
