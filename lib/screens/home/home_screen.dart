@@ -25,6 +25,7 @@ import '../../services/finances/financial_service.dart';
 import '../transactions/transactions_screen.dart';
 import '../reports/reports_screen.dart';
 import '../ai_advisor/ai_advisor_screen.dart';
+import '../ai/conversations_screen.dart';
 import '../onboarding/sms_scanning_screen.dart';
 import '../budgets/budget_screen.dart';
 import '../../services/finances/budget_service.dart';
@@ -265,50 +266,66 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: Colors.white.withOpacity(0.1)),
                     ),
-                    child: ValueListenableBuilder<Box<NotificationModel>>(
-                      valueListenable: BoxManager().getBox<NotificationModel>(
-                        BoxManager.notificationsBoxName,
-                        FirebaseAuth.instance.currentUser?.uid ?? '',
-                      ).listenable(),
-                      builder: (context, box, _) {
-                        final unreadCount = box.values.where((n) => !n.isRead).length;
-                        return Stack(
-                          children: [
-                            GestureDetector(
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => const NotificationsScreen(),
-                                  ),
-                                );
+                    child: Builder(
+                      builder: (context) {
+                        final userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+                        final scopedBoxName = '${BoxManager.notificationsBoxName}_$userId';
+                        
+                        // Safety check: If box isn't open yet, show static icon to avoid crash
+                        if (!Hive.isBoxOpen(scopedBoxName) || userId.isEmpty) {
+                           return IconButton(
+                              icon: const Icon(Icons.notifications_outlined, color: Colors.white, size: 22),
+                              padding: EdgeInsets.zero,
+                              onPressed: () {
+                                Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()));
                               },
-                              child: const Center(
-                                child: Icon(
-                                  Icons.notifications_outlined,
-                                  color: Colors.white,
-                                  size: 22,
-                                ),
-                              ),
-                            ),
-                            if (unreadCount > 0)
-                              Positioned(
-                                top: 8,
-                                right: 8,
-                                child: Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.accentRed,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: const Color(0xFF0A1628),
-                                      width: 1.5,
+                           );
+                        }
+
+                        // Box is open, safe to use listenable
+                        return ValueListenableBuilder<Box<NotificationModel>>(
+                          valueListenable: Hive.box<NotificationModel>(scopedBoxName).listenable(),
+                          builder: (context, box, _) {
+                            final unreadCount = box.values.where((n) => !n.isRead).length;
+                            return Stack(
+                              children: [
+                                GestureDetector(
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => const NotificationsScreen(),
+                                      ),
+                                    );
+                                  },
+                                  child: const Center(
+                                    child: Icon(
+                                      Icons.notifications_outlined,
+                                      color: Colors.white,
+                                      size: 22,
                                     ),
                                   ),
                                 ),
-                              ),
-                          ],
+                                if (unreadCount > 0)
+                                  Positioned(
+                                    top: 8,
+                                    right: 8,
+                                    child: Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.accentRed,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: const Color(0xFF0A1628),
+                                          width: 1.5,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            );
+                          }
                         );
                       }
                     ),
@@ -1457,7 +1474,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => const AIAdvisorScreen(),
+                        builder: (context) => const ConversationsScreen(),
                       ),
                     );
                   },

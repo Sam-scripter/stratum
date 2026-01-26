@@ -233,56 +233,56 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // M-Pesa Auto-Detection Card
-                CleanCard(
-                  backgroundColor: AppTheme.accentGreen.withOpacity(0.15),
-                  child: Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: AppTheme.accentGreen.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.sms_outlined,
-                      color: AppTheme.accentGreen,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: AppTheme.spacing16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'M-Pesa Auto-Detection',
-                          style: GoogleFonts.poppins(
-                            color: AppTheme.primaryLight,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: AppTheme.spacing4),
-                        Text(
-                          'Automatically track transactions',
-                          style: GoogleFonts.poppins(
-                            color: AppTheme.textGray,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Switch(
-                    value: true,
-                    onChanged: (val) {},
-                    activeColor: AppTheme.accentGreen,
-                  ),
-                ],
-              ),
-            ),
-                const SizedBox(height: 24),
+            //     CleanCard(
+            //       backgroundColor: AppTheme.accentGreen.withOpacity(0.15),
+            //       child: Row(
+            //     children: [
+            //       Container(
+            //         width: 48,
+            //         height: 48,
+            //         decoration: BoxDecoration(
+            //           color: AppTheme.accentGreen.withOpacity(0.2),
+            //           borderRadius: BorderRadius.circular(12),
+            //         ),
+            //         child: const Icon(
+            //           Icons.sms_outlined,
+            //           color: AppTheme.accentGreen,
+            //           size: 24,
+            //         ),
+            //       ),
+            //       const SizedBox(width: AppTheme.spacing16),
+            //       Expanded(
+            //         child: Column(
+            //           crossAxisAlignment: CrossAxisAlignment.start,
+            //           children: [
+            //             Text(
+            //               'M-Pesa Auto-Detection',
+            //               style: GoogleFonts.poppins(
+            //                 color: AppTheme.primaryLight,
+            //                 fontWeight: FontWeight.w600,
+            //                 fontSize: 16,
+            //               ),
+            //             ),
+            //             const SizedBox(height: AppTheme.spacing4),
+            //             Text(
+            //               'Automatically track transactions',
+            //               style: GoogleFonts.poppins(
+            //                 color: AppTheme.textGray,
+            //                 fontSize: 13,
+            //               ),
+            //             ),
+            //           ],
+            //         ),
+            //       ),
+            //       Switch(
+            //         value: true,
+            //         onChanged: (val) {},
+            //         activeColor: AppTheme.accentGreen,
+            //       ),
+            //     ],
+            //   ),
+            // ),
+                const SizedBox(height: 10),
 
                 // Filter Tabs
                 Text(

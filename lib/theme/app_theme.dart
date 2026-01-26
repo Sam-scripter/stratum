@@ -74,6 +74,12 @@ class AppTheme {
     colors: [Color(0xFFF59E0B), Color(0xFFEF4444)],
   );
 
+  static const LinearGradient cardGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF232D3F), Color(0xFF1A1F2B)],
+  );
+
   // Neumorphic Shadow (New)
   static List<BoxShadow> get neumorphicShadow => [
     BoxShadow(

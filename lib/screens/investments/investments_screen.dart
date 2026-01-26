@@ -1,582 +1,321 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../theme/app_theme.dart';
-import '../../widgets/custom_widgets.dart';
+import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
+import 'package:fl_chart/fl_chart.dart'; // NEW
+import '../../repositories/financial_repository.dart';
 import '../../models/investment/investment_model.dart';
+import '../../theme/app_theme.dart';
 import 'add_investment_screen.dart';
-import 'investment_detail_screen.dart';
+import 'discover_screen.dart';
 
 class InvestmentsScreen extends StatelessWidget {
   const InvestmentsScreen({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.primaryDark,
-      appBar: AppBar(
-        title: Text(
-          'Investments',
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-            color: AppTheme.primaryLight,
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: const Color(0xFF0A1628),
+        appBar: AppBar(
+          title: Text('Investments', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: Colors.white)),
+          backgroundColor: const Color(0xFF1A2332),
+          elevation: 0,
+          centerTitle: true,
+          bottom: TabBar(
+            indicatorColor: AppTheme.primaryGold,
+            labelColor: AppTheme.primaryGold,
+            unselectedLabelColor: Colors.white54,
+            labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+            tabs: const [
+              Tab(text: "My Portfolio"),
+              Tab(text: "Discover"),
+            ],
           ),
         ),
-        backgroundColor: AppTheme.primaryDark,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.info_outline, color: AppTheme.primaryGold),
-            onPressed: () {},
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppTheme.spacing16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        body: TabBarView(
           children: [
-            // Total Portfolio Value
-            PremiumCard(
-              backgroundColor: AppTheme.surfaceGray,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Total Portfolio Value',
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w400,
-                          color: AppTheme.textGray,
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppTheme.spacing12,
-                          vertical: AppTheme.spacing8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppTheme.accentGreen.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(AppTheme.radius20),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.trending_up,
-                              color: AppTheme.accentGreen,
-                              size: 16,
-                            ),
-                            const SizedBox(width: AppTheme.spacing4),
-                            Text(
-                              '+12.5%',
-                              style: GoogleFonts.poppins(
-                                color: AppTheme.accentGreen,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppTheme.spacing8),
-                  Text(
-                    'KES 285,000',
-                    style: GoogleFonts.poppins(
-                      fontSize: 32,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.primaryGold,
-                    ),
-                  ),
-                  const SizedBox(height: AppTheme.spacing4),
-                  Text(
-                    'Gain: KES 31,500',
-                    style: GoogleFonts.poppins(
-                      color: AppTheme.textGray,
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: AppTheme.spacing24),
-
-            // AI Investment Advisor
-            PremiumCard(
-              backgroundColor: AppTheme.accentBlue.withOpacity(0.1),
-              child: Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: AppTheme.accentBlue.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(AppTheme.radius12),
-                    ),
-                    child: const Icon(
-                      Icons.psychology,
-                      color: AppTheme.accentBlue,
-                      size: 28,
-                    ),
-                  ),
-                  const SizedBox(width: AppTheme.spacing16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'AI Investment Advisor',
-                          style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 16,
-                            color: AppTheme.primaryLight,
-                          ),
-                        ),
-                        const SizedBox(height: AppTheme.spacing4),
-                        Text(
-                          '🔒 Get personalized portfolio recommendations',
-                          style: GoogleFonts.poppins(
-                            color: AppTheme.textGray,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: AppTheme.spacing24),
-
-            // Portfolio Distribution
-            Text(
-              'Portfolio Distribution',
-              style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.primaryLight,
-              ),
-            ),
-            const SizedBox(height: AppTheme.spacing16),
-            PremiumCard(
-              child: Column(
-                children: [
-                  _buildPortfolioItem('Money Market Funds', 45, AppTheme.accentBlue),
-                  const SizedBox(height: AppTheme.spacing16),
-                  _buildPortfolioItem('SACCO Shares', 30, AppTheme.accentGreen),
-                  const SizedBox(height: AppTheme.spacing16),
-                  _buildPortfolioItem('Government Bonds', 15, AppTheme.accentOrange),
-                  const SizedBox(height: AppTheme.spacing16),
-                  _buildPortfolioItem('Stocks', 10, AppTheme.accentRed),
-                ],
-              ),
-            ),
-            const SizedBox(height: AppTheme.spacing24),
-
-            // Active Investments
-            Text(
-              'Active Investments',
-              style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.primaryLight,
-              ),
-            ),
-            const SizedBox(height: AppTheme.spacing16),
-            _buildInvestmentCard(
-              'CIC Money Market Fund',
-              'Money Market',
-              128250,
-              12.5,
-              AppTheme.accentBlue,
-            ),
-            _buildInvestmentCard(
-              'Stima SACCO',
-              'SACCO Shares',
-              85500,
-              8.3,
-              AppTheme.accentGreen,
-            ),
-            _buildInvestmentCard(
-              'Treasury Bonds',
-              'Government Securities',
-              42750,
-              14.2,
-              AppTheme.accentOrange,
-            ),
-            _buildInvestmentCard(
-              'NSE Stocks Portfolio',
-              'Equities',
-              28500,
-              -2.1,
-              AppTheme.accentRed,
-            ),
-            const SizedBox(height: AppTheme.spacing24),
-
-            // Investment Opportunities
-            Text(
-              'Investment Opportunities',
-              style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.primaryLight,
-              ),
-            ),
-            const SizedBox(height: AppTheme.spacing16),
-            _buildOpportunityCard(
-              'Sanlam Money Market Fund',
-              '11.2% p.a.',
-              'Min: KES 5,000',
-              'Low Risk',
-              AppTheme.accentGreen,
-            ),
-            _buildOpportunityCard(
-              'Kenya Treasury Bills',
-              '15.8% p.a.',
-              'Min: KES 50,000',
-              'Low Risk',
-              AppTheme.accentBlue,
-            ),
-            _buildOpportunityCard(
-              'Equity Bank Rights Issue',
-              'Market Rate',
-              'Min: 100 shares',
-              'Medium Risk',
-              AppTheme.accentOrange,
-            ),
-            const SizedBox(height: AppTheme.spacing32),
+            _buildPortfolioTab(context),
+            const DiscoverScreen(),
           ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => const AddInvestmentScreen(),
-            ),
-          );
-        },
-        backgroundColor: AppTheme.accentGreen,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add),
-        label: Text(
-          'Add Investment',
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-          ),
         ),
       ),
     );
   }
 
-  Widget _buildPortfolioItem(String name, double percentage, Color color) {
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: color,
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
-                const SizedBox(width: AppTheme.spacing12),
-                Text(
-                  name,
-                  style: GoogleFonts.poppins(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    color: AppTheme.primaryLight,
-                  ),
-                ),
-              ],
-            ),
-            Text(
-              '${percentage.toStringAsFixed(0)}%',
-              style: GoogleFonts.poppins(
-                fontSize: 15,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.primaryLight,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppTheme.spacing8),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(AppTheme.radius12),
-          child: LinearProgressIndicator(
-            value: percentage / 100,
-            minHeight: 6,
-            backgroundColor: AppTheme.borderGray.withOpacity(0.3),
-            valueColor: AlwaysStoppedAnimation<Color>(color),
-          ),
-        ),
-      ],
-    );
-  }
+  Widget _buildPortfolioTab(BuildContext context) {
+    return Consumer<FinancialRepository>(
+      builder: (context, repository, _) {
+        final investments = repository.investments;
+        final totalValue = investments.fold<double>(0.0, (sum, i) => sum + i.currentValue);
+        final totalCost = investments.fold<double>(0.0, (sum, i) => sum + i.principalAmount);
+        final profit = totalValue - totalCost;
+        final profitPercent = totalCost == 0 ? 0 : (profit / totalCost) * 100;
+        final isProfit = profit >= 0;
 
-  Widget _buildInvestmentCard(String name, String type, double value, double returnRate, Color color) {
-    bool isPositive = returnRate > 0;
-    // Create a mock investment for navigation
-    final mockInvestment = Investment(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      name: name,
-      type: _getInvestmentTypeFromString(type),
-      investedAmount: value * 0.9, // Approximate
-      currentValue: value,
-      returnRate: returnRate,
-      dateInvested: DateTime.now().subtract(const Duration(days: 90)),
-    );
-    
-    return Builder(
-      builder: (context) => GestureDetector(
-        onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => InvestmentDetailScreen(
-                investment: mockInvestment,
-              ),
-            ),
-          );
-        },
-        child: Container(
-      margin: const EdgeInsets.only(bottom: AppTheme.spacing12),
-      padding: const EdgeInsets.all(AppTheme.spacing20),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceGray,
-        borderRadius: BorderRadius.circular(AppTheme.radius16),
-        border: Border.all(
-          color: AppTheme.borderGray.withOpacity(0.3),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(AppTheme.spacing12),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(AppTheme.radius12),
-              border: Border.all(
-                color: color.withOpacity(0.3),
-                width: 1,
-              ),
-            ),
-            child: Icon(Icons.account_balance_wallet, color: color, size: 24),
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => AddInvestmentScreen()));
+            },
+            backgroundColor: AppTheme.primaryGold,
+            icon: Icon(Icons.add, color: Colors.black),
+            label: Text('Add Asset', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
           ),
-          const SizedBox(width: AppTheme.spacing16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 15,
-                    color: AppTheme.primaryLight,
-                  ),
-                ),
-                const SizedBox(height: AppTheme.spacing4),
-                Text(
-                  type,
-                  style: GoogleFonts.poppins(
-                    color: AppTheme.textGray,
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                'KES ${value.toStringAsFixed(0)}',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15,
-                  color: AppTheme.primaryLight,
-                ),
-              ),
-              const SizedBox(height: AppTheme.spacing4),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppTheme.spacing8,
-                  vertical: AppTheme.spacing4,
-                ),
-                decoration: BoxDecoration(
-                  color: isPositive
-                      ? AppTheme.accentGreen.withOpacity(0.2)
-                      : AppTheme.accentRed.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(AppTheme.radius12),
-                  border: Border.all(
-                    color: isPositive
-                        ? AppTheme.accentGreen.withOpacity(0.3)
-                        : AppTheme.accentRed.withOpacity(0.3),
-                    width: 1,
-                  ),
-                ),
-                child: Row(
+          body: investments.isEmpty 
+          ? _buildEmptyState(context)
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 80),
+                child: Column(
                   children: [
-                    Icon(
-                      isPositive ? Icons.arrow_upward : Icons.arrow_downward,
-                      color: isPositive ? AppTheme.accentGreen : AppTheme.accentRed,
-                      size: 12,
-                    ),
-                    const SizedBox(width: AppTheme.spacing4),
-                    Text(
-                      '${returnRate.abs().toStringAsFixed(1)}%',
-                      style: GoogleFonts.poppins(
-                        color: isPositive ? AppTheme.accentGreen : AppTheme.accentRed,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
+                     // Chart
+                     if (investments.isNotEmpty) _buildAllocationChart(investments),
+                     SizedBox(height: 24),
+
+                     // Summary Card
+                     Container(
+                       padding: EdgeInsets.all(20),
+                       decoration: BoxDecoration(
+                         gradient: AppTheme.cardGradient,
+                         borderRadius: BorderRadius.circular(20),
+                         boxShadow: [
+                           BoxShadow(
+                             color: AppTheme.primaryGold.withOpacity(0.1),
+                             blurRadius: 10,
+                             offset: Offset(0, 4),
+                           )
+                         ]
+                       ),
+                       child: Column(
+                         children: [
+                           Text('Total Portfolio Value', 
+                             style: GoogleFonts.poppins(color: Colors.white70, fontSize: 14)),
+                           SizedBox(height: 8),
+                           Text('KES ${NumberFormat("#,##0").format(totalValue)}',
+                             style: GoogleFonts.poppins(
+                               color: Colors.white, 
+                               fontSize: 32, 
+                               fontWeight: FontWeight.bold
+                             )),
+                           SizedBox(height: 12),
+                           Container(
+                             padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                             decoration: BoxDecoration(
+                               color: isProfit ? Colors.green.withOpacity(0.2) : Colors.red.withOpacity(0.2),
+                               borderRadius: BorderRadius.circular(20),
+                             ),
+                             child: Row(
+                               mainAxisSize: MainAxisSize.min,
+                               children: [
+                                 Icon(
+                                   isProfit ? Icons.arrow_upward : Icons.arrow_downward,
+                                   color: isProfit ? Colors.greenAccent : Colors.redAccent,
+                                   size: 16,
+                                 ),
+                                 SizedBox(width: 4),
+                                 Text(
+                                   '${profit >= 0 ? "+" : ""}${NumberFormat("#,##0").format(profit)} (${profitPercent.toStringAsFixed(1)}%)',
+                                   style: GoogleFonts.poppins(
+                                     color: isProfit ? Colors.greenAccent : Colors.redAccent,
+                                     fontWeight: FontWeight.w600,
+                                   ),
+                                 ),
+                               ],
+                             ),
+                           )
+                         ],
+                       ),
+                     ),
+                     
+                     SizedBox(height: 24),
+                     
+                     // Asset List
+                     ListView.separated(
+                       shrinkWrap: true,
+                       physics: NeverScrollableScrollPhysics(),
+                       itemCount: investments.length,
+                       separatorBuilder: (_,__) => SizedBox(height: 12),
+                       itemBuilder: (context, index) {
+                         return _buildAssetCard(context, investments[index], repository);
+                       },
+                     )
                   ],
                 ),
               ),
-            ],
-          ),
-        ],
-      ),
+            ),
+        );
+      },
+    );
+  }
+
+  Widget _buildAllocationChart(List<InvestmentModel> investments) {
+    final Map<InvestmentType, double> totals = {};
+    double totalValue = 0;
+    
+    for (var i in investments) {
+      totals[i.type] = (totals[i.type] ?? 0) + i.currentValue;
+      totalValue += i.currentValue;
+    }
+
+    final List<PieChartSectionData> sections = totals.entries.map((entry) {
+      final percentage = (entry.value / totalValue) * 100;
+      return PieChartSectionData(
+        color: _getTypeColor(entry.key),
+        value: entry.value,
+        title: '${percentage.toStringAsFixed(0)}%',
+        radius: 50,
+        titleStyle: GoogleFonts.poppins(
+          fontSize: 12, 
+          fontWeight: FontWeight.bold, 
+          color: Colors.white
+        ),
+      );
+    }).toList();
+
+    return SizedBox(
+      height: 200,
+      child: PieChart(
+        PieChartData(
+          sections: sections,
+          centerSpaceRadius: 40,
+          sectionsSpace: 2,
         ),
       ),
     );
   }
 
-  InvestmentType _getInvestmentTypeFromString(String type) {
-    switch (type.toLowerCase()) {
-      case 'money market':
-        return InvestmentType.moneyMarket;
-      case 'sacco shares':
-        return InvestmentType.sacco;
-      case 'government securities':
-        return InvestmentType.bonds;
-      case 'equities':
-        return InvestmentType.stocks;
-      default:
-        return InvestmentType.other;
+  Widget _buildAssetCard(BuildContext context, InvestmentModel asset, FinancialRepository repo) {
+    final profit = asset.profitOrLoss;
+    final isProfit = profit >= 0;
+    
+    return Dismissible(
+      key: Key(asset.id),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: EdgeInsets.only(right: 20),
+        color: AppTheme.accentRed,
+        child: Icon(Icons.delete, color: Colors.white),
+      ),
+      confirmDismiss: (_) async {
+        return await showDialog(
+          context: context, 
+          builder: (ctx) => AlertDialog(
+            title: Text("Delete Asset?"),
+            content: Text("Are you sure you want to remove ${asset.name}?"),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text("Cancel")),
+              TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text("Delete", style: TextStyle(color: Colors.red))),
+            ],
+          )
+        );
+      },
+      onDismissed: (_) {
+         repo.investmentService.deleteInvestment(asset.id);
+      },
+      child: GestureDetector(
+        onTap: () {
+           Navigator.push(context, MaterialPageRoute(builder: (_) => AddInvestmentScreen(existingInvestment: asset)));
+        },
+        child: Container(
+          padding: EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A2332), // backgroundLight
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.05)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: _getTypeColor(asset.type).withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(_getTypeIcon(asset.type), color: _getTypeColor(asset.type)),
+              ),
+              SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(asset.name, style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 16)),
+                    Text(asset.type.name.toUpperCase(), style: GoogleFonts.poppins(color: Colors.white54, fontSize: 12)),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text('KES ${NumberFormat("#,##0").format(asset.currentValue)}', 
+                     style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold)),
+                  Text(
+                    '${profit >= 0 ? "+" : ""}${NumberFormat("#,##0.0").format(asset.profitOrLossPercentage)}%',
+                    style: GoogleFonts.poppins(
+                      color: isProfit ? Colors.greenAccent : Colors.redAccent,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildEmptyState(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.show_chart, size: 80, color: Colors.white24),
+          SizedBox(height: 16),
+          Text("No Investments Yet", style: GoogleFonts.poppins(color: Colors.white, fontSize: 18)),
+          SizedBox(height: 8),
+          Text("Start building your portfolio today!", style: GoogleFonts.poppins(color: Colors.white54)),
+          SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => AddInvestmentScreen()));
+            },
+            icon: Icon(Icons.add),
+            label: Text("Add First Asset"),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryGold,
+              foregroundColor: Colors.black,
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  Color _getTypeColor(InvestmentType type) {
+    switch(type) {
+      case InvestmentType.stock: return Colors.blueAccent;
+      case InvestmentType.crypto: return Colors.orangeAccent;
+      case InvestmentType.mmf: return Colors.greenAccent;
+      case InvestmentType.property: return Colors.purpleAccent;
+      case InvestmentType.bond: return Colors.tealAccent;
+      default: return Colors.grey;
     }
   }
 
-  Widget _buildOpportunityCard(String name, String rate, String minimum, String risk, Color color) {
-    // Create a mock opportunity for navigation
-    final mockOpportunity = InvestmentOpportunity(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      name: name,
-      expectedReturn: rate,
-      minimumInvestment: minimum,
-      riskLevel: risk,
-      type: InvestmentType.moneyMarket, // Default, could be determined by name
-      provider: 'Investment Provider',
-    );
-    
-    return Builder(
-      builder: (context) => GestureDetector(
-        onTap: () {
-          // Navigate to Add Investment screen with opportunity pre-filled
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => AddInvestmentScreen(
-                opportunity: mockOpportunity,
-              ),
-            ),
-          );
-        },
-        child: Container(
-      margin: const EdgeInsets.only(bottom: AppTheme.spacing12),
-      padding: const EdgeInsets.all(AppTheme.spacing20),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceGray,
-        borderRadius: BorderRadius.circular(AppTheme.radius16),
-        border: Border.all(
-          color: color.withOpacity(0.3),
-          width: 2,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  name,
-                  style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    color: AppTheme.primaryLight,
-                  ),
-                ),
-              ),
-              Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: AppTheme.spacing12,
-                  vertical: AppTheme.spacing4,
-                ),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(AppTheme.radius20),
-                  border: Border.all(
-                    color: color.withOpacity(0.3),
-                    width: 1,
-                  ),
-                ),
-                child: Text(
-                  risk,
-                  style: GoogleFonts.poppins(
-                    color: color,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppTheme.spacing12),
-          Row(
-            children: [
-              Icon(Icons.show_chart, color: color, size: 20),
-              const SizedBox(width: AppTheme.spacing8),
-              Text(
-                'Returns: $rate',
-                style: GoogleFonts.poppins(
-                  color: AppTheme.textGray,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppTheme.spacing8),
-          Row(
-            children: [
-              Icon(Icons.payments, color: AppTheme.textGray, size: 20),
-              const SizedBox(width: AppTheme.spacing8),
-              Text(
-                minimum,
-                style: GoogleFonts.poppins(
-                  color: AppTheme.textGray,
-                  fontSize: 14,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-        ),
-      ),
-    );
+  IconData _getTypeIcon(InvestmentType type) {
+    switch(type) {
+      case InvestmentType.stock: return Icons.ssid_chart;
+      case InvestmentType.crypto: return Icons.currency_bitcoin;
+      case InvestmentType.mmf: return Icons.account_balance;
+      case InvestmentType.property: return Icons.home_work;
+      case InvestmentType.bond: return Icons.receipt_long;
+      default: return Icons.category;
+    }
   }
 }
-

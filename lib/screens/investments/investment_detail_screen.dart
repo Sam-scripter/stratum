@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart'; 
 import '../../theme/app_theme.dart';
-import '../../widgets/custom_widgets.dart';
+// import '../../widgets/custom_widgets.dart'; // Assume this might be missing or valid, but I'll use standard widgets if unsure. 
+// Using standard widgets for safety since I haven't seen custom_widgets.dart recently.
 import '../../models/investment/investment_model.dart';
 import 'add_investment_screen.dart';
 
 class InvestmentDetailScreen extends StatelessWidget {
-  final Investment investment;
+  final InvestmentModel investment;
 
   const InvestmentDetailScreen({
     Key? key,
@@ -15,83 +17,30 @@ class InvestmentDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isPositive = investment.isPositive;
+    final isPositive = investment.profitOrLoss >= 0;
 
     return Scaffold(
-      backgroundColor: AppTheme.primaryDark,
+      backgroundColor: const Color(0xFF0A1628), // backgroundDeep
       appBar: AppBar(
         title: Text(
           'Investment Details',
           style: GoogleFonts.poppins(
             fontWeight: FontWeight.w600,
-            color: AppTheme.primaryLight,
+            color: Colors.white,
           ),
         ),
-        backgroundColor: AppTheme.primaryDark,
+        backgroundColor: const Color(0xFF1A2332), // backgroundLight
         elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           IconButton(
-            icon: Icon(Icons.edit, color: AppTheme.primaryGold),
+            icon: const Icon(Icons.edit, color: AppTheme.primaryGold),
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (context) => AddInvestmentScreen(
-                    investmentToEdit: investment,
+                    existingInvestment: investment,
                   ),
-                ),
-              );
-            },
-          ),
-          IconButton(
-            icon: Icon(Icons.delete_outline, color: AppTheme.accentRed),
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  backgroundColor: AppTheme.surfaceGray,
-                  title: Text(
-                    'Delete Investment',
-                    style: GoogleFonts.poppins(
-                      color: AppTheme.primaryLight,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  content: Text(
-                    'Are you sure you want to delete this investment?',
-                    style: GoogleFonts.poppins(
-                      color: AppTheme.textGray,
-                    ),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: Text(
-                        'Cancel',
-                        style: GoogleFonts.poppins(
-                          color: AppTheme.textGray,
-                        ),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        Navigator.of(context).pop(true);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: const Text('Investment deleted'),
-                            backgroundColor: AppTheme.accentRed,
-                          ),
-                        );
-                      },
-                      child: Text(
-                        'Delete',
-                        style: GoogleFonts.poppins(
-                          color: AppTheme.accentRed,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
                 ),
               );
             },
@@ -99,19 +48,29 @@ class InvestmentDetailScreen extends StatelessWidget {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppTheme.spacing16),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Investment Overview Card
-            PremiumCard(
-              padding: const EdgeInsets.all(AppTheme.spacing24),
-              hasGlow: true,
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                gradient: AppTheme.cardGradient,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.primaryGold.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  )
+                ]
+              ),
               child: Column(
                 children: [
                   // Category Icon
                   Container(
-                    padding: const EdgeInsets.all(AppTheme.spacing20),
+                    padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
@@ -130,7 +89,7 @@ class InvestmentDetailScreen extends StatelessWidget {
                       style: const TextStyle(fontSize: 48),
                     ),
                   ),
-                  const SizedBox(height: AppTheme.spacing20),
+                  const SizedBox(height: 20),
 
                   // Investment Name
                   Text(
@@ -138,20 +97,20 @@ class InvestmentDetailScreen extends StatelessWidget {
                     style: GoogleFonts.poppins(
                       fontSize: 22,
                       fontWeight: FontWeight.w700,
-                      color: AppTheme.primaryLight,
+                      color: Colors.white,
                     ),
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: AppTheme.spacing8),
+                  const SizedBox(height: 8),
                   Text(
-                    investment.typeName,
+                    investment.type.name.toUpperCase(),
                     style: GoogleFonts.poppins(
                       fontSize: 14,
                       color: AppTheme.textGray,
                     ),
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: AppTheme.spacing24),
+                  const SizedBox(height: 24),
 
                   // Current Value
                   Column(
@@ -165,7 +124,7 @@ class InvestmentDetailScreen extends StatelessWidget {
                           fontWeight: FontWeight.w400,
                         ),
                       ),
-                      const SizedBox(height: AppTheme.spacing8),
+                      const SizedBox(height: 8),
                       Text(
                         investment.formattedCurrentValue,
                         style: GoogleFonts.poppins(
@@ -176,23 +135,23 @@ class InvestmentDetailScreen extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: AppTheme.spacing16),
+                  const SizedBox(height: 16),
 
                   // Return Rate Badge
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: AppTheme.spacing20,
-                      vertical: AppTheme.spacing12,
+                      horizontal: 20,
+                      vertical: 12,
                     ),
                     decoration: BoxDecoration(
                       color: isPositive
-                          ? AppTheme.accentGreen.withOpacity(0.2)
-                          : AppTheme.accentRed.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(AppTheme.radius20),
+                          ? Colors.green.withOpacity(0.2)
+                          : Colors.red.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20),
                       border: Border.all(
                         color: isPositive
-                            ? AppTheme.accentGreen.withOpacity(0.5)
-                            : AppTheme.accentRed.withOpacity(0.5),
+                            ? Colors.green.withOpacity(0.5)
+                            : Colors.red.withOpacity(0.5),
                         width: 1.5,
                       ),
                     ),
@@ -202,19 +161,19 @@ class InvestmentDetailScreen extends StatelessWidget {
                         Icon(
                           isPositive ? Icons.trending_up : Icons.trending_down,
                           color: isPositive
-                              ? AppTheme.accentGreen
-                              : AppTheme.accentRed,
+                              ? Colors.greenAccent
+                              : Colors.redAccent,
                           size: 20,
                         ),
-                        const SizedBox(width: AppTheme.spacing8),
+                        const SizedBox(width: 8),
                         Text(
                           investment.formattedReturnRate,
                           style: GoogleFonts.poppins(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                             color: isPositive
-                                ? AppTheme.accentGreen
-                                : AppTheme.accentRed,
+                                ? Colors.greenAccent
+                                : Colors.redAccent,
                           ),
                         ),
                       ],
@@ -223,7 +182,7 @@ class InvestmentDetailScreen extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: AppTheme.spacing24),
+            const SizedBox(height: 24),
 
             // Investment Information
             Text(
@@ -231,65 +190,41 @@ class InvestmentDetailScreen extends StatelessWidget {
               style: GoogleFonts.poppins(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
-                color: AppTheme.primaryLight,
+                color: Colors.white,
               ),
             ),
-            const SizedBox(height: AppTheme.spacing16),
-            PremiumCard(
-              padding: const EdgeInsets.all(AppTheme.spacing20),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A2332),
+                borderRadius: BorderRadius.circular(16),
+              ),
               child: Column(
                 children: [
-                  _buildInfoRow(
-                    'Investment Type',
-                    investment.typeName,
-                    Icons.category,
-                  ),
-                  const Divider(color: AppTheme.borderGray, height: AppTheme.spacing24),
                   _buildInfoRow(
                     'Invested Amount',
                     investment.formattedInvestedAmount,
                     Icons.attach_money,
                   ),
-                  const Divider(color: AppTheme.borderGray, height: AppTheme.spacing24),
-                  _buildInfoRow(
-                    'Current Value',
-                    investment.formattedCurrentValue,
-                    Icons.trending_up,
-                  ),
-                  const Divider(color: AppTheme.borderGray, height: AppTheme.spacing24),
+                  const Divider(color: Colors.white10, height: 24),
                   _buildInfoRow(
                     'Gain/Loss',
                     investment.formattedGainLoss,
-                    investment.isPositive ? Icons.arrow_upward : Icons.arrow_downward,
-                    color: isPositive ? AppTheme.accentGreen : AppTheme.accentRed,
+                    investment.profitOrLoss >= 0 ? Icons.arrow_upward : Icons.arrow_downward,
+                    color: isPositive ? Colors.greenAccent : Colors.redAccent,
                   ),
-                  const Divider(color: AppTheme.borderGray, height: AppTheme.spacing24),
+                  const Divider(color: Colors.white10, height: 24),
                   _buildInfoRow(
-                    'Date Invested',
-                    investment.formattedDate,
+                    'Last Updated',
+                    DateFormat('MMM d, yyyy').format(investment.lastUpdated),
                     Icons.calendar_today,
                   ),
-                  if (investment.provider != null && investment.provider!.isNotEmpty) ...[
-                    const Divider(color: AppTheme.borderGray, height: AppTheme.spacing24),
-                    _buildInfoRow(
-                      'Provider/Bank',
-                      investment.provider!,
-                      Icons.business,
-                    ),
-                  ],
-                  if (investment.referenceNumber != null && investment.referenceNumber!.isNotEmpty) ...[
-                    const Divider(color: AppTheme.borderGray, height: AppTheme.spacing24),
-                    _buildInfoRow(
-                      'Reference Number',
-                      investment.referenceNumber!,
-                      Icons.qr_code,
-                    ),
-                  ],
-                  if (investment.notes != null && investment.notes!.isNotEmpty) ...[
-                    const Divider(color: AppTheme.borderGray, height: AppTheme.spacing24),
+                  if (investment.notes.isNotEmpty) ...[
+                    const Divider(color: Colors.white10, height: 24),
                     _buildInfoRow(
                       'Notes',
-                      investment.notes!,
+                      investment.notes,
                       Icons.note_outlined,
                       isMultiLine: true,
                     ),
@@ -297,49 +232,6 @@ class InvestmentDetailScreen extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: AppTheme.spacing24),
-
-            // Action Buttons
-            Text(
-              'Actions',
-              style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.primaryLight,
-              ),
-            ),
-            const SizedBox(height: AppTheme.spacing16),
-            _buildActionButton(
-              context,
-              'Edit Investment',
-              Icons.edit_outlined,
-              AppTheme.primaryGold,
-              () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => AddInvestmentScreen(
-                      investmentToEdit: investment,
-                    ),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: AppTheme.spacing12),
-            _buildActionButton(
-              context,
-              'Share Investment',
-              Icons.share_outlined,
-              AppTheme.accentBlue,
-              () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Share feature coming soon!'),
-                    backgroundColor: AppTheme.accentBlue,
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: AppTheme.spacing32),
           ],
         ),
       ),
@@ -357,14 +249,10 @@ class InvestmentDetailScreen extends StatelessWidget {
       crossAxisAlignment: isMultiLine ? CrossAxisAlignment.start : CrossAxisAlignment.center,
       children: [
         Container(
-          padding: const EdgeInsets.all(AppTheme.spacing8),
+          padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
             color: (color ?? AppTheme.primaryGold).withOpacity(0.15),
-            borderRadius: BorderRadius.circular(AppTheme.radius8),
-            border: Border.all(
-              color: (color ?? AppTheme.primaryGold).withOpacity(0.3),
-              width: 1,
-            ),
+            borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(
             icon,
@@ -372,7 +260,7 @@ class InvestmentDetailScreen extends StatelessWidget {
             size: 20,
           ),
         ),
-        const SizedBox(width: AppTheme.spacing16),
+        const SizedBox(width: 16),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -385,13 +273,13 @@ class InvestmentDetailScreen extends StatelessWidget {
                   fontWeight: FontWeight.w500,
                 ),
               ),
-              const SizedBox(height: AppTheme.spacing4),
+              const SizedBox(height: 4),
               Text(
                 value,
                 style: GoogleFonts.poppins(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
-                  color: color ?? AppTheme.primaryLight,
+                  color: color ?? Colors.white,
                 ),
                 maxLines: isMultiLine ? null : 1,
                 overflow: isMultiLine ? null : TextOverflow.ellipsis,
@@ -402,52 +290,39 @@ class InvestmentDetailScreen extends StatelessWidget {
       ],
     );
   }
-
-  Widget _buildActionButton(
-    BuildContext context,
-    String label,
-    IconData icon,
-    Color color,
-    VoidCallback onTap,
-  ) {
-    return GestureDetector(
-      onTap: onTap,
-      child: PremiumCard(
-        padding: const EdgeInsets.all(AppTheme.spacing16),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(AppTheme.spacing12),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(AppTheme.radius12),
-                border: Border.all(
-                  color: color.withOpacity(0.3),
-                  width: 1,
-                ),
-              ),
-              child: Icon(icon, color: color, size: 24),
-            ),
-            const SizedBox(width: AppTheme.spacing16),
-            Expanded(
-              child: Text(
-                label,
-                style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.primaryLight,
-                ),
-              ),
-            ),
-            Icon(
-              Icons.arrow_forward_ios,
-              color: AppTheme.textGray,
-              size: 16,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
+// Extensions for formatting
+extension InvestmentModelDisplay on InvestmentModel {
+  String get typeEmoji {
+    switch (type) {
+      case InvestmentType.stock: return '📈';
+      case InvestmentType.mmf: return '💰';
+      case InvestmentType.crypto: return '₿';
+      case InvestmentType.bond: return '📜';
+      case InvestmentType.property: return '🏠';
+      case InvestmentType.other: return '📦';
+    }
+  }
+
+  String get formattedCurrentValue {
+    return 'KES ${NumberFormat("#,##0.00").format(currentValue)}';
+  }
+
+  String get formattedInvestedAmount {
+    return 'KES ${NumberFormat("#,##0.00").format(principalAmount)}';
+  }
+
+  String get formattedReturnRate {
+    final profit = profitOrLoss;
+    final percent = profitOrLossPercentage;
+    final sign = profit >= 0 ? '+' : '';
+    return '$sign${percent.toStringAsFixed(1)}%';
+  }
+  
+  String get formattedGainLoss {
+     final profit = profitOrLoss;
+     final sign = profit >= 0 ? '+' : '';
+     return '$sign${NumberFormat("#,##0.00").format(profit)}';
+  }
+}

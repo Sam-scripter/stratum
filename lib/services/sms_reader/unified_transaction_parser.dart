@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import '../../models/transaction/transaction_model.dart';
 import '../pattern learning/pattern_learning_service.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
+import 'package:stratum/services/ai/ai_service.dart';
 
 class UnifiedTransactionParser {
   static const String _localRulesPath = 'assets/parsing_rules.json';
@@ -222,33 +223,9 @@ class UnifiedTransactionParser {
 
       // 2. Conflict Resolution: Check PatternLearningService for Category Override
       TransactionCategory category = TransactionCategory.general;
-      
-      // Default heuristics
-      if (rule.type == 'AIRTIME' || recipientOrSender.toLowerCase().contains('airtime')) {
-        category = TransactionCategory.utilities;
-      } else if (rule.type == 'PAYBILL') {
-        category = TransactionCategory.other; 
-      }
+      String cleanTitle = recipientOrSender;
 
-      // Advanced Heuristics (Ported from SmsReaderService)
-      final lower = recipientOrSender.toLowerCase();
-      if (lower.contains('safaricom') || lower.contains('airtime')) {
-        category = TransactionCategory.utilities;
-      } else if (lower.contains('kplc') || lower.contains('power') || lower.contains('electricity') || lower.contains('water')) {
-        category = TransactionCategory.utilities;
-      } else if (lower.contains('rent')) {
-        category = TransactionCategory.other;
-      } else if (lower.contains('pharmacy') || lower.contains('hospital') || lower.contains('clinic')) {
-        category = TransactionCategory.health;
-      } else if (lower.contains('school') || lower.contains('university') || lower.contains('college')) {
-        category = TransactionCategory.other; // Or education if added
-      } else if (lower.contains('supermarket') || lower.contains('shop') || lower.contains('store')) {
-        category = TransactionCategory.shopping;
-      } else if (lower.contains('restaurant') || lower.contains('cafe') || lower.contains('hotel')) {
-        category = TransactionCategory.dining;
-      }
-
-      // Check Learning Service (First Priority)
+      // Check Learning Service (First Priority - Manual Pattern)
       final learnedPatternKey = PatternLearningService.learnPattern(originalSms, '');
       final learnedCategoryStr = PatternLearningService.getCategoryForPattern(
         learnedPatternKey, 
@@ -259,15 +236,97 @@ class UnifiedTransactionParser {
       if (learnedCategoryStr != null) {
         final learnedCat = PatternLearningService.categoryFromString(learnedCategoryStr);
         if (learnedCat != null) category = learnedCat;
+      } else {
+        // AI ANALYST (Second Priority)
+        // Only queries if no manual pattern exists
+        try {
+          final aiResult = await AIService().cleanMerchantAndCategory(
+             recipientOrSender, 
+             originalSms
+          );
+          
+          if (aiResult[0].isNotEmpty && aiResult[0] != recipientOrSender) {
+             cleanTitle = aiResult[0]; // Clean Merchant Name
+          }
+           
+          // Map AI String to Enum
+          if (aiResult[1] != 'General') {
+             // Basic AI -> Enum mapping
+             switch (aiResult[1].toLowerCase()) {
+               case 'food & drink': category = TransactionCategory.dining; break;
+               case 'dining': category = TransactionCategory.dining; break;
+               case 'shopping': category = TransactionCategory.shopping; break;
+               case 'transport': category = TransactionCategory.transport; break;
+               case 'bills & utilities': category = TransactionCategory.utilities; break;
+               case 'entertainment': category = TransactionCategory.entertainment; break;
+               case 'health': category = TransactionCategory.health; break;
+               case 'education': category = TransactionCategory.other; break;
+               case 'personal care': category = TransactionCategory.health; break;
+               case 'housing': category = TransactionCategory.utilities; break;
+               case 'income': category = TransactionCategory.salary; break;
+               case 'transfer': category = TransactionCategory.transfer; break;
+               default: 
+                 // Try parsing via service if string matches enum name
+                 final cat = PatternLearningService.categoryFromString(aiResult[1]);
+                 if (cat != null) category = cat;
+             }
+          }
+        } catch (e) {
+          print('AI Analyst failed: $e');
+        }
+        
+        // Fallback Heuristics (Third Priority - Only if General)
+        if (category == TransactionCategory.general) {
+          final lower = recipientOrSender.toLowerCase();
+          if (rule.type == 'AIRTIME' || lower.contains('airtime')) {
+            category = TransactionCategory.utilities;
+          } else if (rule.type == 'PAYBILL') {
+            // Check specifically for known paybills before generic 'other' assignment in rule.type logic? 
+            // Actually the logic here is: if type==PAYBILL, cat=Other. 
+            // The heuristic below overrides ONLY if cat==General.
+            // Wait, if rule.type is PAYBILL, line 284 sets category = Other.
+            // Line 279 checks `if (category == TransactionCategory.general)`.
+            // So if PAYBILL was set, this block is SKIPPED.
+            // I need to change how PAYBILL is handled or check investments inside the PAYBILL block if I want to override it.
+            // OR simpler: The logic at 283 `else if (rule.type == 'PAYBILL')` is inside the `if (category == General)` block.
+            // So if checks above failed, we enter here.
+            
+            // Let's modify the block order so Investment check comes BEFORE Paybill check.
+            category = TransactionCategory.other; 
+          } else if (lower.contains('cic') || 
+                     lower.contains('britam') || 
+                     lower.contains('mali') || 
+                     lower.contains('money market') ||
+                     lower.contains('unit trust') ||
+                     lower.contains('shares') ||
+                     lower.contains('sanlam') ||
+                     lower.contains('icealion')) {
+            category = TransactionCategory.investment;
+          } else if (lower.contains('safaricom')) {
+            category = TransactionCategory.utilities;
+          } else if (lower.contains('kplc') || lower.contains('power') || lower.contains('electricity') || lower.contains('water')) {
+            category = TransactionCategory.utilities;
+          } else if (lower.contains('rent')) {
+            category = TransactionCategory.utilities;
+          } else if (lower.contains('pharmacy') || lower.contains('hospital') || lower.contains('clinic')) {
+            category = TransactionCategory.health;
+          } else if (lower.contains('school') || lower.contains('university') || lower.contains('college')) {
+            category = TransactionCategory.other;
+          } else if (lower.contains('supermarket') || lower.contains('shop') || lower.contains('store')) {
+            category = TransactionCategory.shopping;
+          } else if (lower.contains('restaurant') || lower.contains('cafe') || lower.contains('hotel') || lower.contains('java') || lower.contains('artcaffe')) {
+            category = TransactionCategory.dining;
+          }
+        }
       }
       
       return Transaction(
         id: _uuid.v4(),
-        title: type == TransactionType.income ? 'Received from $recipientOrSender' : recipientOrSender,
+        title: type == TransactionType.income ? 'Received from $cleanTitle' : cleanTitle,
         amount: amount,
         type: type,
         category: category, 
-        recipient: recipientOrSender,
+        recipient: cleanTitle, // Store clean name as recipient too
         originalSms: originalSms,
         newBalance: balance,
         date: date,

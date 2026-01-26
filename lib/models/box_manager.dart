@@ -8,6 +8,9 @@ import 'message_pattern/message_pattern.dart';
 import 'budget/budget_model.dart';
 import 'savings/savings_goal_model.dart';
 import 'notification/notification_model.dart';
+import 'ai/chat_message_model.dart';
+import 'ai/chat_session_model.dart';
+import 'investment/investment_model.dart';
 
 
 class BoxManager {
@@ -23,6 +26,9 @@ class BoxManager {
   static const String budgetsBoxName = 'budgets';
   static const String savingsGoalsBoxName = 'savings_goals';
   static const String notificationsBoxName = 'notifications';
+  static const String chatBoxName = 'chat_messages';
+  static const String chatSessionBoxName = 'chat_sessions';
+  static const String investmentsBoxName = 'investments';
 
   // Helper to get the user-scoped box name
   static String _getScopedBoxName(String baseName, String userId) {
@@ -60,6 +66,10 @@ class BoxManager {
     
     // Notification (Phase 9)
     if (!Hive.isAdapterRegistered(11)) Hive.registerAdapter(NotificationModelAdapter()); // ID 11
+    if (!Hive.isAdapterRegistered(21)) Hive.registerAdapter(ChatMessageModelAdapter()); // ID 21
+    if (!Hive.isAdapterRegistered(22)) Hive.registerAdapter(ChatSessionModelAdapter()); // ID 22
+    if (!Hive.isAdapterRegistered(23)) Hive.registerAdapter(InvestmentTypeAdapter()); // ID 23
+    if (!Hive.isAdapterRegistered(24)) Hive.registerAdapter(InvestmentModelAdapter()); // ID 24
   }
 
   Future<void> openAllBoxes(String userId) async {
@@ -73,6 +83,9 @@ class BoxManager {
     await _openBoxInternal<Budget>(budgetsBoxName, userId);
     await _openBoxInternal<SavingsGoal>(savingsGoalsBoxName, userId);
     await _openBoxInternal<NotificationModel>(notificationsBoxName, userId);
+    await _openBoxInternal<ChatMessageModel>(chatBoxName, userId);
+    await _openBoxInternal<ChatSessionModel>(chatSessionBoxName, userId);
+    await _openBoxInternal<InvestmentModel>(investmentsBoxName, userId);
   }
 
   Future<void> _openBoxInternal<T>(String baseName, String userId) async {
@@ -111,6 +124,9 @@ class BoxManager {
       try { await Hive.box<AppSettings>(_getScopedBoxName(settingsBoxName, userId)).close(); } catch(e) { print(e); }
       try { await Hive.box<AccountSnapshot>(_getScopedBoxName(accountSnapshotBoxName, userId)).close(); } catch(e) { print(e); }
       try { await Hive.box<MessagePattern>(_getScopedBoxName(patternsBoxName, userId)).close(); } catch(e) { print(e); }
+      try { await Hive.box<ChatMessageModel>(_getScopedBoxName(chatBoxName, userId)).close(); } catch(e) { print(e); }
+      try { await Hive.box<ChatSessionModel>(_getScopedBoxName(chatSessionBoxName, userId)).close(); } catch(e) { print(e); }
+      try { await Hive.box<InvestmentModel>(_getScopedBoxName(investmentsBoxName, userId)).close(); } catch(e) { print(e); }
 
       _openBoxes.remove(userId);
     }

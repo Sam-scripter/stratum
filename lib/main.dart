@@ -17,6 +17,7 @@ import 'package:stratum/services/background/sms_background_service.dart';
 import 'package:provider/provider.dart';
 import 'package:stratum/repositories/financial_repository.dart';
 import 'package:stratum/services/finances/financial_service.dart';
+import 'package:stratum/services/ai/ai_service.dart';
 import 'package:stratum/services/sms_reader/sms_reader_service.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -26,6 +27,10 @@ void main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await Hive.initFlutter();
   BoxManager.registerAdapters();
+  
+  // Initialize AI Service
+  await AIService().initialize('AIzaSyCnnNwQPMAvbXgQCL6Cblp_UL-Z0Ywe5-8');
+  
   await NotificationService().initialize();
   await BackgroundSmsService.initialize();
 

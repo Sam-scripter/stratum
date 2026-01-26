@@ -11,6 +11,7 @@ import '../pattern learning/pattern_learning_service.dart';
 import 'unified_transaction_parser.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../models/notification/notification_model.dart';
+import '../../services/ai/ai_detective.dart';
 
 /// Progress data for SMS scanning
 class SmsReadProgress {
@@ -742,6 +743,11 @@ class SmsReaderService {
           isRead: false,
         );
         notificationsBox.put(notification.id, notification);
+
+        // AI Watchdog Check (Fire and forget)
+        AIDetective().checkBudgetVelocity(transaction, userId).catchError((e) {
+          print('AI Watchdog Error: $e');
+        });
       }
       return transaction;
     }

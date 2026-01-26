@@ -5,19 +5,23 @@ import 'package:stratum/models/account/account_model.dart';
 import 'package:stratum/models/box_manager.dart';
 import 'package:stratum/models/transaction/transaction_model.dart';
 import 'package:stratum/services/finances/financial_service.dart';
+import 'package:stratum/services/finances/investment_service.dart'; // NEW
 import 'package:stratum/services/sms_reader/sms_reader_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:stratum/models/investment/investment_model.dart'; // NEW
 
 class FinancialRepository with ChangeNotifier {
   final BoxManager _boxManager;
   final FinancialService _financialService;
+  late final InvestmentService _investmentService; // NEW
   final SmsReaderService _smsReaderService;
   final String _userId;
 
   List<Account> _accounts = [];
   List<Transaction> _recentTransactions = [];
   List<Transaction> _allTransactions = [];
+  List<InvestmentModel> _investments = []; // NEW
   bool _isLoading = true;
   String? _error;
 
@@ -30,6 +34,7 @@ class FinancialRepository with ChangeNotifier {
         _boxManager = boxManager,
         _financialService = financialService,
         _smsReaderService = smsReaderService {
+    _investmentService = InvestmentService(userId); // Init
     _initialize();
   }
 
@@ -37,18 +42,21 @@ class FinancialRepository with ChangeNotifier {
   List<Account> get accounts => _accounts;
   List<Transaction> get recentTransactions => _recentTransactions;
   List<Transaction> get allTransactions => _allTransactions;
+  List<InvestmentModel> get investments => _investments; // NEW
+  InvestmentService get investmentService => _investmentService; // Expose service
   bool get isLoading => _isLoading;
   String? get error => _error;
   String get userId => _userId;
 
   StreamSubscription? _accountsSubscription;
   StreamSubscription? _transactionsSubscription;
+  StreamSubscription? _investmentsSubscription; // NEW
 
   Future<void> _initialize() async {
-    if (_userId.isEmpty) return; // Guard against unauthenticated initialization
+    if (_userId.isEmpty) return; 
     try {
       await _boxManager.openAllBoxes(_userId);
-      await _loadUserAliases(); // Load aliases
+      await _loadUserAliases(); 
       _financialService.updateCompletedPeriods();
       _setupBoxListeners();
       await _refreshDataInternal();
@@ -71,6 +79,11 @@ class FinancialRepository with ChangeNotifier {
         .getBox<Transaction>(BoxManager.transactionsBoxName, _userId)
         .watch()
         .listen((_) => _refreshDataInternal());
+        
+    _investmentsSubscription = _boxManager
+        .getBox<InvestmentModel>(BoxManager.investmentsBoxName, _userId)
+        .watch()
+        .listen((_) => _refreshDataInternal());
   }
 
   Future<void> _refreshDataInternal() async {
@@ -82,6 +95,8 @@ class FinancialRepository with ChangeNotifier {
       BoxManager.transactionsBoxName,
       _userId,
     );
+    // Fetch Investments
+    _investments = await _investmentService.getAllInvestments();
 
     final allAccounts = accountsBox.values.toList();
     final allTransactions = transactionsBox.values.toList();

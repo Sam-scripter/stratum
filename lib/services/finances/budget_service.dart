@@ -4,6 +4,7 @@ import '../../models/transaction/transaction_model.dart';
 import '../../models/budget/budget_model.dart';
 import '../../models/savings/savings_goal_model.dart';
 import '../../models/account/account_model.dart';
+import '../../models/investment/investment_model.dart'; // NEW
 
 class BudgetService {
   final String userId;
@@ -138,7 +139,12 @@ class BudgetService {
   Future<double> getTotalNetWorth() async {
     await _boxManager.openAllBoxes(userId);
     final accountsBox = _boxManager.getBox<Account>(BoxManager.accountsBoxName, userId);
-    return accountsBox.values.fold<double>(0.0, (double sum, acc) => sum + acc.balance);
+    final accountTotal = accountsBox.values.fold<double>(0.0, (double sum, acc) => sum + acc.balance);
+    
+    final investmentsBox = _boxManager.getBox<InvestmentModel>(BoxManager.investmentsBoxName, userId);
+    final investmentTotal = investmentsBox.values.fold<double>(0.0, (sum, inv) => sum + inv.currentValue);
+    
+    return accountTotal + investmentTotal;
   }
 
   Future<double> getTotalAllocated() async {
@@ -156,7 +162,12 @@ class BudgetService {
   // Synchronous getters (for when boxes are already open)
   double get totalNetWorth {
     final accountsBox = _boxManager.getBox<Account>(BoxManager.accountsBoxName, userId);
-    return accountsBox.values.fold(0.0, (sum, acc) => sum + acc.balance);
+    final accountTotal = accountsBox.values.fold(0.0, (sum, acc) => sum + acc.balance);
+    
+    final investmentsBox = _boxManager.getBox<InvestmentModel>(BoxManager.investmentsBoxName, userId);
+    final investmentTotal = investmentsBox.values.fold(0.0, (sum, inv) => sum + inv.currentValue);
+    
+    return accountTotal + investmentTotal;
   }
 
   double get totalAllocated {
