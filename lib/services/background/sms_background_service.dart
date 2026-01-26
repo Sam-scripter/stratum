@@ -64,6 +64,25 @@ class BackgroundSmsService {
     );
   }
 
+  static bool _isRequestingBatteryExemption = false;
+
+  static Future<void> requestBatteryExemption() async {
+    if (_isRequestingBatteryExemption) return;
+    _isRequestingBatteryExemption = true;
+
+    try {
+      // Request to disable battery optimization ensuring the service persists
+      final status = await Permission.ignoreBatteryOptimizations.status;
+      if (status.isDenied || status.isRestricted || status.isLimited) {
+         await Permission.ignoreBatteryOptimizations.request();
+      }
+    } catch (e) {
+      print("Warning: Could not request battery exemption: $e");
+    } finally {
+      _isRequestingBatteryExemption = false;
+    }
+  }
+
   static Future<void> startMonitoring([String? userId]) async {
     final service = FlutterBackgroundService();
     
@@ -91,6 +110,7 @@ class BackgroundSmsService {
     
     // Initialize things needed in background
     await Hive.initFlutter();
+    BoxManager.registerAdapters();
     
     final prefs = await SharedPreferences.getInstance();
     final userId = prefs.getString('background_service_user_id');

@@ -47,7 +47,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _hasSmsPermission = false;
   bool _isCategoryExpanded = false;
   TimePeriod _selectedPeriod = TimePeriod.today;
-  FinancialSummary? _summary;
 
   @override
   void initState() {
@@ -154,17 +153,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final recentTransactions = repository.recentTransactions;
         final netWorth = _calculateNetWorth(accounts);
         
-        // Use repository summary if available, or update local cache
-        if (_summary == null) {
-          try {
-             _summary = repository.getSummary(_selectedPeriod);
-          } catch(e) {
-             // Fallback or loading state handled implicitly
-          }
-        }
-        
-        // Ensure summary is never null for UI rendering
-        final currentSummary = _summary ?? repository.getSummary(_selectedPeriod); 
+        // Always get fresh summary to ensure reactivity
+        final currentSummary = repository.getSummary(_selectedPeriod); 
 
         return Scaffold(
           backgroundColor: const Color(0xFF0A1628),
@@ -172,9 +162,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             child: RefreshIndicator(
               onRefresh: () async {
                 await repository.refresh();
-                setState(() {
-                   _summary = repository.getSummary(_selectedPeriod);
-                });
               },
               color: AppTheme.primaryGold,
               backgroundColor: const Color(0xFF1A2332),
@@ -723,7 +710,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         onTap: () {
                             setState(() {
                               _selectedPeriod = period;
-                              _summary = context.read<FinancialRepository>().getSummary(_selectedPeriod);
                             });
                             Navigator.pop(context);
                         },

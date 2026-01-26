@@ -96,6 +96,8 @@ class AuthWrapper extends StatelessWidget {
       // User is logged in, check if we have a pending notification to navigate to
       WidgetsBinding.instance.addPostFrameCallback((_) {
          NotificationService.instance.consumePendingTransaction();
+         // Request battery optimization exemption to keep background service alive
+         BackgroundSmsService.requestBatteryExemption();
       });
       return const MainScreen();
     }

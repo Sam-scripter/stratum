@@ -14,6 +14,7 @@ import '../../main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/background/sms_background_service.dart';
 import 'package:hive/hive.dart';
+import 'background_permission_screen.dart';
 
 enum ScanningState { requestPermission, scanning, processing, complete }
 
@@ -224,7 +225,7 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
       await Future.delayed(const Duration(seconds: 2));
       if (mounted) {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const MainScreen()),
+          MaterialPageRoute(builder: (context) => const BackgroundPermissionScreen()),
         );
       }
     } catch (e) {
