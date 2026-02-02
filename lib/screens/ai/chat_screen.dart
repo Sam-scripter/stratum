@@ -7,6 +7,7 @@ import '../../theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../models/box_manager.dart';
 import '../../models/ai/chat_message_model.dart';
+import '../../core/secrets.dart'; // NEW
 
 class ChatScreen extends StatefulWidget {
   final String sessionId;
@@ -40,7 +41,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _loadHistory() async {
     final userId = FirebaseAuth.instance.currentUser?.uid ?? '';
-    await _aiService.initialize('AIzaSyCnnNwQPMAvbXgQCL6Cblp_UL-Z0Ywe5-8', userId);
+    await _aiService.initialize(AppSecrets.geminiApiKey, userId);
     await _aiService.loadSession(widget.sessionId);
     
     // Load from Hive

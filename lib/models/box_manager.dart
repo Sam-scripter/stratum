@@ -11,7 +11,8 @@ import 'notification/notification_model.dart';
 import 'ai/chat_message_model.dart';
 import 'ai/chat_session_model.dart';
 import 'investment/investment_model.dart';
-
+import '../models/ai/daily_insight_model.dart';
+import '../models/subscription/user_subscription_model.dart'; // NEW
 
 class BoxManager {
   static final BoxManager _instance = BoxManager._internal();
@@ -29,6 +30,8 @@ class BoxManager {
   static const String chatBoxName = 'chat_messages';
   static const String chatSessionBoxName = 'chat_sessions';
   static const String investmentsBoxName = 'investments';
+  static const String dailyInsightsBoxName = 'daily_insights';
+  static const String subscriptionBoxName = 'subscriptions'; // NEW
 
   // Helper to get the user-scoped box name
   static String _getScopedBoxName(String baseName, String userId) {
@@ -70,6 +73,8 @@ class BoxManager {
     if (!Hive.isAdapterRegistered(22)) Hive.registerAdapter(ChatSessionModelAdapter()); // ID 22
     if (!Hive.isAdapterRegistered(23)) Hive.registerAdapter(InvestmentTypeAdapter()); // ID 23
     if (!Hive.isAdapterRegistered(24)) Hive.registerAdapter(InvestmentModelAdapter()); // ID 24
+    if (!Hive.isAdapterRegistered(30)) Hive.registerAdapter(DailyInsightAdapter()); // ID 30
+    if (!Hive.isAdapterRegistered(31)) Hive.registerAdapter(UserSubscriptionAdapter()); // ID 31 (NEW)
   }
 
   Future<void> openAllBoxes(String userId) async {
@@ -86,6 +91,8 @@ class BoxManager {
     await _openBoxInternal<ChatMessageModel>(chatBoxName, userId);
     await _openBoxInternal<ChatSessionModel>(chatSessionBoxName, userId);
     await _openBoxInternal<InvestmentModel>(investmentsBoxName, userId);
+    await _openBoxInternal<DailyInsight>(dailyInsightsBoxName, userId);
+    await _openBoxInternal<UserSubscription>(subscriptionBoxName, userId); // NEW
   }
 
   Future<void> _openBoxInternal<T>(String baseName, String userId) async {
@@ -127,6 +134,8 @@ class BoxManager {
       try { await Hive.box<ChatMessageModel>(_getScopedBoxName(chatBoxName, userId)).close(); } catch(e) { print(e); }
       try { await Hive.box<ChatSessionModel>(_getScopedBoxName(chatSessionBoxName, userId)).close(); } catch(e) { print(e); }
       try { await Hive.box<InvestmentModel>(_getScopedBoxName(investmentsBoxName, userId)).close(); } catch(e) { print(e); }
+      try { await Hive.box<DailyInsight>(_getScopedBoxName(dailyInsightsBoxName, userId)).close(); } catch(e) { print(e); }
+      try { await Hive.box<UserSubscription>(_getScopedBoxName(subscriptionBoxName, userId)).close(); } catch(e) { print(e); } // NEW
 
       _openBoxes.remove(userId);
     }

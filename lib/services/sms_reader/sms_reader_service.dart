@@ -108,6 +108,7 @@ class SmsReaderService {
               message.address!,
               message.body!,
               message.date ?? DateTime.now(),
+              allowAI: false, // OPTIMIZATION: Disable AI for bulk scan
             );
 
             if (transaction != null) {
@@ -384,6 +385,7 @@ class SmsReaderService {
             message.address!,
             message.body!,
             message.date ?? DateTime.now(),
+            allowAI: true, // Enable AI for recent/live scans
           );
           
           if (transaction != null) {
@@ -423,17 +425,19 @@ class SmsReaderService {
   Future<Transaction?> parseSmsToTransaction(
     String address,
     String body,
-    DateTime date,
-  ) async {
-    return await _parseSmsToTransaction(address, body, date);
+    DateTime date, {
+    bool allowAI = false,
+  }) async {
+    return await _parseSmsToTransaction(address, body, date, allowAI: allowAI);
   }
 
   /// Parse SMS to Transaction (private implementation)
   Future<Transaction?> _parseSmsToTransaction(
     String address,
     String body,
-    DateTime date,
-  ) async {
+    DateTime date, {
+    bool allowAI = false,
+  }) async {
     // Strict filtering for non-transactional messages
     final lowerBody = body.toLowerCase();
     if (lowerBody.contains('failed') || 
@@ -546,6 +550,7 @@ class SmsReaderService {
       accountId: account.id,
       userId: userId,
       accountType: accountType,
+      allowAI: allowAI,
     );
 
     // we don't update balance here, we do it in saveTransactions to be safe and efficient
@@ -685,7 +690,12 @@ class SmsReaderService {
     String body,
     DateTime date,
   ) async {
-    final transaction = await _parseSmsToTransaction(address, body, date);
+    final transaction = await _parseSmsToTransaction(
+      address, 
+      body, 
+      date, 
+      allowAI: true, // Enable AI for single messages
+    );
 
     if (transaction != null) {
       await _boxManager.openAllBoxes(userId);

@@ -117,6 +117,7 @@ class UnifiedTransactionParser {
     required String accountId,
     required String userId,
     String? accountType,
+    bool allowAI = false,
   }) async {
     if (_compiledRules.isEmpty) await initialize();
 
@@ -129,7 +130,7 @@ class UnifiedTransactionParser {
     for (final rule in rules) {
       final match = rule.regex.firstMatch(body);
       if (match != null) {
-        return _createTransactionFromMatch(rule, match, body, date, accountId, accountType, userId);
+        return _createTransactionFromMatch(rule, match, body, date, accountId, accountType, userId, allowAI);
       }
     }
     return null;
@@ -143,6 +144,7 @@ class UnifiedTransactionParser {
     String accountId,
     String? accountType,
     String userId,
+    bool allowAI,
   ) async {
     try {
       // Extract fields based on groups configuration
@@ -238,41 +240,43 @@ class UnifiedTransactionParser {
         if (learnedCat != null) category = learnedCat;
       } else {
         // AI ANALYST (Second Priority)
-        // Only queries if no manual pattern exists
-        try {
-          final aiResult = await AIService().cleanMerchantAndCategory(
-             recipientOrSender, 
-             originalSms
-          );
-          
-          if (aiResult[0].isNotEmpty && aiResult[0] != recipientOrSender) {
-             cleanTitle = aiResult[0]; // Clean Merchant Name
+        // Only queries if no manual pattern exists AND allowAI is true
+        if (allowAI) {
+          try {
+            final aiResult = await AIService().cleanMerchantAndCategory(
+               recipientOrSender, 
+               originalSms
+            );
+            
+            if (aiResult[0].isNotEmpty && aiResult[0] != recipientOrSender) {
+               cleanTitle = aiResult[0]; // Clean Merchant Name
+            }
+             
+            // Map AI String to Enum
+            if (aiResult[1] != 'General') {
+               // Basic AI -> Enum mapping
+               switch (aiResult[1].toLowerCase()) {
+                 case 'food & drink': category = TransactionCategory.dining; break;
+                 case 'dining': category = TransactionCategory.dining; break;
+                 case 'shopping': category = TransactionCategory.shopping; break;
+                 case 'transport': category = TransactionCategory.transport; break;
+                 case 'bills & utilities': category = TransactionCategory.utilities; break;
+                 case 'entertainment': category = TransactionCategory.entertainment; break;
+                 case 'health': category = TransactionCategory.health; break;
+                 case 'education': category = TransactionCategory.other; break;
+                 case 'personal care': category = TransactionCategory.health; break;
+                 case 'housing': category = TransactionCategory.utilities; break;
+                 case 'income': category = TransactionCategory.salary; break;
+                 case 'transfer': category = TransactionCategory.transfer; break;
+                 default: 
+                   // Try parsing via service if string matches enum name
+                   final cat = PatternLearningService.categoryFromString(aiResult[1]);
+                   if (cat != null) category = cat;
+               }
+            }
+          } catch (e) {
+            print('AI Analyst failed: $e');
           }
-           
-          // Map AI String to Enum
-          if (aiResult[1] != 'General') {
-             // Basic AI -> Enum mapping
-             switch (aiResult[1].toLowerCase()) {
-               case 'food & drink': category = TransactionCategory.dining; break;
-               case 'dining': category = TransactionCategory.dining; break;
-               case 'shopping': category = TransactionCategory.shopping; break;
-               case 'transport': category = TransactionCategory.transport; break;
-               case 'bills & utilities': category = TransactionCategory.utilities; break;
-               case 'entertainment': category = TransactionCategory.entertainment; break;
-               case 'health': category = TransactionCategory.health; break;
-               case 'education': category = TransactionCategory.other; break;
-               case 'personal care': category = TransactionCategory.health; break;
-               case 'housing': category = TransactionCategory.utilities; break;
-               case 'income': category = TransactionCategory.salary; break;
-               case 'transfer': category = TransactionCategory.transfer; break;
-               default: 
-                 // Try parsing via service if string matches enum name
-                 final cat = PatternLearningService.categoryFromString(aiResult[1]);
-                 if (cat != null) category = cat;
-             }
-          }
-        } catch (e) {
-          print('AI Analyst failed: $e');
         }
         
         // Fallback Heuristics (Third Priority - Only if General)

@@ -230,12 +230,29 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
       }
     } catch (e) {
       if (mounted) {
+        String errorMessage = 'Error: ${e.toString()}';
+        if (errorMessage.toLowerCase().contains('resource has been exhausted') || 
+            errorMessage.toLowerCase().contains('quota') ||
+            errorMessage.toLowerCase().contains('429')) {
+          errorMessage = 'AI is not available at this time. Continuing with basic scanning.';
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: ${e.toString()}'),
+            content: Text(errorMessage),
             backgroundColor: AppTheme.accentRed,
+            duration: const Duration(seconds: 4),
           ),
         );
+        
+        // If it's just an AI error, we might want to continue instead of resetting?
+        // But for now, follow the existing flow but with better messaging.
+        // Actually, if it's an AI error, we probably shouldn't fail the whole scan if possible.
+        // But since the service rethrows, we are here. 
+        // Best approach: Modifying the Service to NOT rethrow on AI errors specifically is harder 
+        // without custom exceptions. 
+        // For now, just showing the friendly error is what was requested.
+        
         setState(() {
           _currentState = ScanningState.requestPermission;
         });

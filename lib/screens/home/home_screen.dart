@@ -2,6 +2,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import '../../services/finances/financial_health_service.dart';
+import '../../services/ai/ai_consultant_service.dart';
+import '../../models/ai/daily_insight_model.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -35,7 +38,10 @@ import '../onboarding/sms_scanning_screen.dart';
 import '../accounts/add_account_screen.dart';
 import '../budgets/budget_screen.dart';
 import '../../services/finances/budget_service.dart';
+import '../../services/finances/budget_service.dart';
 import '../../theme/app_theme.dart';
+import '../../services/subscription/subscription_service.dart'; // NEW
+import '../monetization/plans_screen.dart'; // NEW
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -234,6 +240,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
               Row(
                 children: [
+                  // Upgrade Button
+                  if (!context.watch<SubscriptionService>().isPro)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 12),
+                      child: GestureDetector(
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlansScreen())),
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFD4AF37), Color(0xFFF8D668)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFFD4AF37).withOpacity(0.3),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(Icons.diamond_outlined, color: Colors.white, size: 22),
+                        ),
+                      ),
+                    ),
+                    
                   // Settings Button
                   Container(
                     width: 44,
@@ -908,199 +943,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildFinancialHealthScore() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Financial Health',
-            style: GoogleFonts.poppins(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1A2332),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withOpacity(0.05)),
-            ),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Overall Score',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white70,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppTheme.accentGreen.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: AppTheme.accentGreen.withOpacity(0.3),
-                        ),
-                      ),
-                      child: Text(
-                        '78',
-                        style: GoogleFonts.poppins(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.accentGreen,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: LinearProgressIndicator(
-                    value: 0.78,
-                    minHeight: 8,
-                    backgroundColor: Colors.white.withOpacity(0.1),
-                    valueColor: const AlwaysStoppedAnimation<Color>(
-                      AppTheme.accentGreen,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Good financial health. Keep up the savings momentum.',
-                  style: GoogleFonts.poppins(
-                    fontSize: 13,
-                    color: Colors.white.withOpacity(0.6),
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAIInsights() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'AI Insight',
-            style: GoogleFonts.poppins(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  AppTheme.accentBlue.withOpacity(0.1),
-                  AppTheme.accentBlue.withOpacity(0.05),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppTheme.accentBlue.withOpacity(0.2)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: AppTheme.accentBlue.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(
-                        Icons.lightbulb_outline,
-                        color: AppTheme.accentBlue,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        'Smart Savings Opportunity',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'You have KES 15,000 idle in your account. Moving this to a money market fund could earn you ~KES 75 this month.',
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    color: Colors.white.withOpacity(0.8),
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Investment options coming soon!'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                    },
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(
-                        color: AppTheme.accentBlue,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    child: Text(
-                      'View Options',
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.accentBlue,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildSpendingByCategory(FinancialRepository repository) {
     // This probably needs to be fetched from repository properly
     // Using simple mock or logic similar to what was there if possible
@@ -1530,6 +1372,302 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  Widget _buildFinancialHealthScore() {
+    final repository = Provider.of<FinancialRepository>(context, listen: false);
+    final service = FinancialHealthService();
+    final health = service.calculateHealth(repository);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Financial Health',
+                style: GoogleFonts.poppins(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+              if (!context.watch<SubscriptionService>().isPro)
+                GestureDetector(
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlansScreen())),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryGold.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppTheme.primaryGold),
+                    ),
+                    child: Text(
+                      "UPGRADE",
+                      style: GoogleFonts.poppins(fontSize: 10, color: AppTheme.primaryGold, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  const Color(0xFF1A2332), 
+                  health.color.withOpacity(0.1)
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: health.color.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: 70, 
+                      height: 70,
+                      child: CircularProgressIndicator(
+                        value: health.score / 100,
+                        backgroundColor: Colors.white10,
+                        color: health.color,
+                        strokeWidth: 8,
+                      ),
+                    ),
+                    Text(
+                      '${health.score}',
+                      style: GoogleFonts.poppins(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        height: 1
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 20),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        health.status,
+                        style: GoogleFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: health.color,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        health.feedback,
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAIInsights() {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return const SizedBox.shrink();
+
+    // 1. Check Subscription
+    final isPro = context.watch<SubscriptionService>().isPro;
+
+    if (!isPro) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: GestureDetector(
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlansScreen())),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.auto_awesome, color: Colors.white.withOpacity(0.5), size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Atlas Insight',
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white.withOpacity(0.5),
+                    ),
+                  ),
+                  const Spacer(),
+                  Icon(Icons.lock_rounded, color: const Color(0xFFD4AF37), size: 16),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A2332),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white.withOpacity(0.05)),
+                ),
+                child: Column(
+                  children: [
+                    Icon(Icons.diamond_outlined, size: 40, color: const Color(0xFFD4AF37).withOpacity(0.8)),
+                    const SizedBox(height: 12),
+                    Text(
+                      "Unlock Daily AI Insights",
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      "Get personalized financial tips every morning with Stratum Plus.",
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: Colors.white60,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD4AF37),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        "Upgrade Now",
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // 2. Pro User Content
+    return FutureBuilder<DailyInsight>(
+      future: AIConsultantService().getDailyInsight(userId),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+           return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Shimmer.fromColors(
+                baseColor: const Color(0xFF1A2332),
+                highlightColor: Colors.white10,
+                child: Container(
+                  height: 100, 
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A2332), 
+                    borderRadius: BorderRadius.circular(20)
+                  )
+                ),
+              ),
+           );
+        }
+
+        final insight = snapshot.data!;
+        
+        IconData icon = Icons.lightbulb_outline;
+        Color color = Colors.blueAccent;
+        
+        if (insight.type == 'positive') {
+           icon = Icons.trending_up;
+           color = Colors.greenAccent;
+        } else if (insight.type == 'warning') {
+           icon = Icons.warning_amber_rounded;
+           color = Colors.orangeAccent;
+        }
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.auto_awesome, color: const Color(0xFF8B5CF6), size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Atlas Insight',
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A2332),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFF8B5CF6).withOpacity(0.3)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF8B5CF6).withOpacity(0.05),
+                      blurRadius: 10,
+                    )
+                  ]
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: color.withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(icon, color: color, size: 24),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        insight.text,
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          color: Colors.white,
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+    );
+  }
+
   Widget _buildCleanFAB(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
@@ -1570,4 +1708,5 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
     );
   }
+
 }

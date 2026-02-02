@@ -5,6 +5,8 @@ import '../../models/box_manager.dart';
 import '../../models/ai/chat_message_model.dart';
 import '../../models/ai/chat_session_model.dart';
 import '../../models/investment/investment_model.dart'; // NEW
+import '../../models/ai/daily_insight_model.dart'; // NEW
+import 'package:collection/collection.dart';
 import 'package:uuid/uuid.dart';
 
 class AIConsultantService {
@@ -245,5 +247,99 @@ class AIConsultantService {
     } catch (e) {
       print('Title gen error: $e');
     }
+  }
+
+  // --- Daily Insight Logic ---
+  Future<DailyInsight> getDailyInsight(String userId) async {
+    if (!_initialized) throw Exception("AI Service not initialized");
+    
+    final box = BoxManager().getBox<DailyInsight>(BoxManager.dailyInsightsBoxName, userId);
+    
+    // Check for today's insight
+    final today = DateTime.now();
+    final cached = box.values.firstWhereOrNull((i) => 
+      i.date.year == today.year && i.date.month == today.month && i.date.day == today.day
+    );
+
+    if (cached != null) return cached;
+
+    // Generate NEW Insight
+    try {
+      // 1. Build Context
+      final context = await _buildContext(userId);
+      
+      // 2. Prompt
+      final prompt = '''
+      You are Atlas, a financial advisor.
+      Context: $context
+      
+      Task: Give me ONE short, actionable, 1-sentence financial tip for today.
+      Focus on spending habits, upcoming bills, or savings.
+      If no data is available, give a general saving tip.
+      
+      Output JSON ONLY:
+      { "text": "Your tip here", "type": "positive/neutral/warning" }
+      ''';
+      
+      final response = await _model.generateContent([Content.text(prompt)]);
+      final jsonText = response.text?.replaceAll(RegExp(r'```json|```'), '').trim();
+      
+      String text = "Save a little every day!"; // Fallback
+      String type = "neutral";
+      
+      if (jsonText != null) {
+         // Simple parsing (avoid importing dart:convert if not needed, but cleaner to use it if I update imports)
+         // I'll assume standard string manipulation for robustness if json parse fails or just simplistic parsing
+         if (jsonText.contains('"text":')) {
+           final textMatch = RegExp(r'"text":\s*"(.*?)"').firstMatch(jsonText);
+           if (textMatch != null) text = textMatch.group(1)!;
+           
+           if (jsonText.contains('"type": "positive"')) type = 'positive';
+           if (jsonText.contains('"type": "warning"')) type = 'warning';
+         } else {
+           text = jsonText; // Fallback to raw text
+         }
+      }
+      
+      final insight = DailyInsight(text: text, date: today, type: type);
+      await box.add(insight);
+      return insight;
+      
+    } catch (e) {
+      print("Insight Gen Error: $e");
+      return DailyInsight(text: "Review your expenses today.", date: DateTime.now());
+    }
+  }
+
+  Future<String> _buildContext(String userId) async {
+    await BoxManager().openAllBoxes(userId);
+    final transactions = BoxManager().getBox<Transaction>(BoxManager.transactionsBoxName, userId).values;
+    final now = DateTime.now();
+    final recent = transactions.where((t) => t.date.isAfter(now.subtract(const Duration(days: 30)))).toList();
+    
+    // Sort
+    recent.sort((a,b) => b.date.compareTo(a.date));
+    
+    // Summary
+    double income = 0;
+    double expense = 0;
+    for (var t in recent) {
+      if (t.type == TransactionType.income) income += t.amount; else expense += t.amount;
+    }
+    
+    // Investments
+    final investments = BoxManager().getBox<InvestmentModel>(BoxManager.investmentsBoxName, userId).values;
+    double totalInvested = investments.fold(0, (sum, i) => sum + i.currentValue);
+
+    // Recent Summary
+    final recentStr = recent.take(5).map((t) => "${t.title} (${t.amount})").join(", ");
+    
+    return """
+    Last 30 Days:
+    Income: $income
+    Expense: $expense
+    Total Invested: $totalInvested
+    Recent Transactions: $recentStr
+    """;
   }
 }

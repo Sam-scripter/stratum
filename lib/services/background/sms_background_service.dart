@@ -48,16 +48,16 @@ class BackgroundSmsService {
       androidConfiguration: AndroidConfiguration(
         // This will be executed in the isolate
         onStart: onStart,
-        // Auto start service on boot
-        autoStart: true,
+        // Manual start service to avoid race conditions with onboarding
+        autoStart: false,
         isForegroundMode: true,
         notificationChannelId: notificationChannelId,
         initialNotificationTitle: 'Stratum Service',
-        initialNotificationContent: 'Monitoring financial SMS...',
+        initialNotificationContent: 'Monitoring stopped',
         foregroundServiceNotificationId: notificationId,
       ),
       iosConfiguration: IosConfiguration(
-        autoStart: true,
+        autoStart: false,
         onForeground: onStart,
         onBackground: onIosBackground,
       ),
@@ -77,7 +77,7 @@ class BackgroundSmsService {
          await Permission.ignoreBatteryOptimizations.request();
       }
     } catch (e) {
-      print("Warning: Could not request battery exemption: $e");
+      debugPrint("Warning: Could not request battery exemption: $e");
     } finally {
       _isRequestingBatteryExemption = false;
     }

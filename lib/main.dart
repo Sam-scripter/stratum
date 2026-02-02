@@ -18,7 +18,11 @@ import 'package:provider/provider.dart';
 import 'package:stratum/repositories/financial_repository.dart';
 import 'package:stratum/services/finances/financial_service.dart';
 import 'package:stratum/services/ai/ai_service.dart';
+import 'package:stratum/services/ai/ai_consultant_service.dart';
 import 'package:stratum/services/sms_reader/sms_reader_service.dart';
+import 'package:stratum/services/subscription/subscription_service.dart';
+import 'package:stratum/core/secrets.dart'; 
+import 'package:stratum/services/update/update_service.dart'; // NEW
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -29,7 +33,7 @@ void main() async {
   BoxManager.registerAdapters();
   
   // Initialize AI Service
-  await AIService().initialize('AIzaSyCnnNwQPMAvbXgQCL6Cblp_UL-Z0Ywe5-8');
+  await AIService().initialize(AppSecrets.geminiApiKey);
   
   await NotificationService().initialize();
   await BackgroundSmsService.initialize();
@@ -49,6 +53,8 @@ class StratumApp extends StatelessWidget {
           value: FirebaseAuth.instance.authStateChanges(),
           initialData: FirebaseAuth.instance.currentUser,
         ),
+        ChangeNotifierProvider(create: (_) => SubscriptionService()), // NEW
+        
         // 2. Provide FinancialRepository dependent on User
         ChangeNotifierProxyProvider<User?, FinancialRepository>(
           create: (_) => FinancialRepository(
@@ -98,11 +104,18 @@ class AuthWrapper extends StatelessWidget {
     final user = context.watch<User?>();
     
     if (user != null) {
+      // Initialize AI Consultant for specific user
+      AIConsultantService().initialize(AppSecrets.geminiApiKey, user.uid);
+      // Initialize Subscription Service
+      context.read<SubscriptionService>().initialize();
+
       // User is logged in, check if we have a pending notification to navigate to
       WidgetsBinding.instance.addPostFrameCallback((_) {
          NotificationService.instance.consumePendingTransaction();
          // Request battery optimization exemption to keep background service alive
          BackgroundSmsService.requestBatteryExemption();
+         // Start background monitoring explicitly
+         BackgroundSmsService.startMonitoring(user.uid);
       });
       return const MainScreen();
     }
@@ -128,6 +141,15 @@ class _MainScreenState extends State<MainScreen> {
     const InvestmentsScreen(),
     const ProfileScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Check for in-app updates
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      UpdateService().checkFlexibleUpdate(context);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

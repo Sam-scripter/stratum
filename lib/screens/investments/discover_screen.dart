@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../theme/app_theme.dart';
+import '../../models/investment/discover_content.dart'; // NEW
+import 'discover_detail_screen.dart'; // NEW
 
 class DiscoverScreen extends StatelessWidget {
   const DiscoverScreen({Key? key}) : super(key: key);
@@ -9,7 +11,7 @@ class DiscoverScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A1628), // Same as backgroundDeep
+      backgroundColor: const Color(0xFF0A1628), // backgroundDeep
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -18,49 +20,24 @@ class DiscoverScreen extends StatelessWidget {
             _buildSectionHeader("Investment 101 🎓"),
             SizedBox(height: 12),
             SizedBox(
-              height: 140,
-              child: ListView(
+              height: 150, // Slightly taller for better touch targets
+              child: ListView.separated(
                 scrollDirection: Axis.horizontal,
-                children: [
-                  _buildLearnCard("What is an MMF?", "Low risk, daily interest.", Colors.greenAccent),
-                  SizedBox(width: 12),
-                  _buildLearnCard("Stocks vs Bonds", "Ownership vs Lending.", Colors.blueAccent),
-                  SizedBox(width: 12),
-                  _buildLearnCard("Crypto Basics", "High risk, high reward.", Colors.orangeAccent),
-                ],
+                itemCount: DiscoverData.education.length,
+                separatorBuilder: (_,__) => SizedBox(width: 12),
+                itemBuilder: (context, index) {
+                   return _buildLearnCard(context, DiscoverData.education[index]);
+                },
               ),
             ),
             
             SizedBox(height: 24),
             _buildSectionHeader("Trusted Platforms 🏛️"),
             SizedBox(height: 12),
-            _buildPlatformCard(
-              "Mali (Safaricom)", 
-              "Invest via M-Pesa. 10% annual interest.",
-              "https://www.safaricom.co.ke/personal/m-pesa/mali",
-              Icons.phone_android
-            ),
-            SizedBox(height: 12),
-            _buildPlatformCard(
-              "CIC Money Market", 
-              "Regulated Unit Trust. consistent returns.",
-              "https://cic.co.ke/personal/financial-planning/unit-trusts/",
-              Icons.account_balance
-            ),
-            SizedBox(height: 12),
-            _buildPlatformCard(
-              "Hisa App", 
-              "Buy US Stocks (Apple, Tesla) from Kenya.",
-              "https://hisa.co/",
-              Icons.show_chart
-            ),
-             SizedBox(height: 12),
-            _buildPlatformCard(
-              "Binance", 
-              "Leading Crypto Exchange.",
-              "https://www.binance.com",
-              Icons.currency_bitcoin
-            ),
+            ...DiscoverData.platforms.map((item) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _buildPlatformCard(context, item),
+            )).toList(),
           ],
         ),
       ),
@@ -78,39 +55,41 @@ class DiscoverScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildLearnCard(String title, String subtitle, Color color) {
-    return Container(
-      width: 160,
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A2332), // backgroundLight
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: EdgeInsets.all(8),
-            decoration: BoxDecoration(color: color.withOpacity(0.2), shape: BoxShape.circle),
-            child: Icon(Icons.lightbulb_outline, color: color, size: 20),
-          ),
-          Spacer(),
-          Text(title, style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
-          SizedBox(height: 4),
-          Text(subtitle, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 10), maxLines: 2),
-        ],
+  Widget _buildLearnCard(BuildContext context, DiscoverItem item) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => DiscoverDetailScreen(item: item)));
+      },
+      child: Container(
+        width: 160,
+        padding: EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A2332), // backgroundLight
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withOpacity(0.05)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: EdgeInsets.all(8),
+              decoration: BoxDecoration(color: item.color.withOpacity(0.2), shape: BoxShape.circle),
+              child: Icon(item.iconData ?? Icons.lightbulb, color: item.color, size: 20),
+            ),
+            Spacer(),
+            Text(item.title, style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
+            SizedBox(height: 4),
+            Text(item.subtitle, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 10), maxLines: 2, overflow: TextOverflow.ellipsis),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildPlatformCard(String name, String desc, String url, IconData icon) {
+  Widget _buildPlatformCard(BuildContext context, DiscoverItem item) {
     return GestureDetector(
-      onTap: () async {
-        final uri = Uri.parse(url);
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
-        }
+      onTap: () {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => DiscoverDetailScreen(item: item)));
       },
       child: Container(
         padding: EdgeInsets.all(16),
@@ -125,22 +104,22 @@ class DiscoverScreen extends StatelessWidget {
                width: 48,
                height: 48,
                decoration: BoxDecoration(
-                 color: AppTheme.primaryGold.withOpacity(0.1),
+                 color: item.color.withOpacity(0.1),
                  shape: BoxShape.circle,
                ),
-               child: Icon(icon, color: AppTheme.primaryGold),
+               child: Icon(item.iconData ?? Icons.public, color: item.color),
              ),
              SizedBox(width: 16),
              Expanded(
                child: Column(
                  crossAxisAlignment: CrossAxisAlignment.start,
                  children: [
-                   Text(name, style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 16)),
-                   Text(desc, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 12)),
+                   Text(item.title, style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 16)),
+                   Text(item.subtitle, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
                  ],
                ),
              ),
-             Icon(Icons.open_in_new, color: Colors.white24, size: 16),
+             Icon(Icons.chevron_right, color: Colors.white24, size: 20),
           ],
         ),
       ),

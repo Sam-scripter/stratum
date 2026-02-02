@@ -3,11 +3,15 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../../models/box_manager.dart';
 import '../../models/ai/chat_session_model.dart';
 import '../../services/ai/ai_consultant_service.dart';
 import '../../theme/app_theme.dart';
 import 'chat_screen.dart';
+import '../../core/secrets.dart'; // NEW
+import '../../services/subscription/subscription_service.dart'; // NEW
+import '../monetization/plans_screen.dart'; // NEW
 
 class ConversationsScreen extends StatefulWidget {
   const ConversationsScreen({Key? key}) : super(key: key);
@@ -29,7 +33,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   }
 
   Future<void> _initialize() async {
-     await _aiService.initialize('AIzaSyCnnNwQPMAvbXgQCL6Cblp_UL-Z0Ywe5-8', _userId);
+     await _aiService.initialize(AppSecrets.geminiApiKey, _userId);
      setState(() => _isLoading = false);
   }
 
@@ -51,6 +55,21 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final canAccess = context.watch<SubscriptionService>().canAccessAtlasChat;
+    
+    if (!canAccess) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF0A1628),
+        appBar: AppBar(
+          title: Text('Atlas AI', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: Colors.white)),
+          backgroundColor: const Color(0xFF1A2332),
+          elevation: 0,
+          centerTitle: true,
+        ),
+        body: _buildLockedState(),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFF0A1628),
       appBar: AppBar(
@@ -207,5 +226,63 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       return DateFormat('HH:mm').format(date);
     }
     return DateFormat('MM/dd').format(date);
+  }
+
+  Widget _buildLockedState() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      width: double.infinity,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryGold.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.psychology_outlined, size: 60, color: AppTheme.primaryGold),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            "Atlas Chat is Locked",
+            style: GoogleFonts.poppins(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            "Upgrade to Stratum Elite to have unlimited conversations with your personal AI accountant.",
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              color: Colors.white70,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 32),
+          ElevatedButton(
+            onPressed: () {
+               Navigator.push(context, MaterialPageRoute(builder: (_) => const PlansScreen()));
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryGold,
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+            child: Text(
+              "Upgrade to Elite",
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.black,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

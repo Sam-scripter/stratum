@@ -8,6 +8,8 @@ import '../../models/investment/investment_model.dart';
 import '../../theme/app_theme.dart';
 import 'add_investment_screen.dart';
 import 'discover_screen.dart';
+import '../../services/subscription/subscription_service.dart'; // NEW
+import '../monetization/plans_screen.dart'; // NEW
 
 class InvestmentsScreen extends StatelessWidget {
   const InvestmentsScreen({Key? key}) : super(key: key);
@@ -45,6 +47,12 @@ class InvestmentsScreen extends StatelessWidget {
   }
 
   Widget _buildPortfolioTab(BuildContext context) {
+    final canAccess = context.watch<SubscriptionService>().canAccessInvestments;
+    
+    if (!canAccess) {
+      return _buildLockedState(context);
+    }
+
     return Consumer<FinancialRepository>(
       builder: (context, repository, _) {
         final investments = repository.investments;
@@ -317,5 +325,62 @@ class InvestmentsScreen extends StatelessWidget {
       case InvestmentType.bond: return Icons.receipt_long;
       default: return Icons.category;
     }
+  }
+
+  Widget _buildLockedState(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryGold.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.lock_rounded, size: 60, color: AppTheme.primaryGold),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            "Portfolio Tracking is Locked",
+            style: GoogleFonts.poppins(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            "Upgrade to Stratum Plus to track your stocks, crypto, and assets manually or via SMS.",
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              color: Colors.white70,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 32),
+          ElevatedButton(
+            onPressed: () {
+               Navigator.push(context, MaterialPageRoute(builder: (_) => const PlansScreen()));
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryGold,
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+            child: Text(
+              "View Plans",
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.black,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
