@@ -1,13 +1,15 @@
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import '../../core/secrets.dart';
 import '../../models/transaction/transaction_model.dart';
 import '../../models/box_manager.dart';
 import '../../models/ai/chat_message_model.dart';
 import '../../models/ai/chat_session_model.dart';
-import '../../models/investment/investment_model.dart'; // NEW
-import '../../models/ai/daily_insight_model.dart'; // NEW
+import '../../models/investment/investment_model.dart';
+import '../../models/ai/daily_insight_model.dart';
 import 'package:collection/collection.dart';
 import 'package:uuid/uuid.dart';
+import 'open_router_client.dart';
 
 class AIConsultantService {
   static final AIConsultantService _instance = AIConsultantService._internal();
@@ -16,21 +18,36 @@ class AIConsultantService {
 
   late GenerativeModel _model;
   ChatSession? _chatSession;
+  OpenRouterClient? _openRouter;
   bool _initialized = false;
   String _userId = '';
   String? _currentSessionId;
 
+  bool get _useOpenRouter => AppSecrets.useOpenRouter;
+
   Future<void> initialize(String apiKey, String userId) async {
     if (_initialized && _userId == userId) return;
-    
+
     _userId = userId;
-    _model = GenerativeModel(
-      model: 'gemini-3-flash-preview',
-      apiKey: apiKey,
-    );
-    
+    if (_useOpenRouter) {
+      _openRouter = OpenRouterClient(apiKey: AppSecrets.openRouterApiKey);
+    } else {
+      _model = GenerativeModel(
+        model: 'gemini-3-flash-preview',
+        apiKey: apiKey,
+      );
+    }
+
     await BoxManager().openAllBoxes(userId);
     _initialized = true;
+  }
+
+  /// Single prompt, no session or persistence. Use for "Ask Atlas" etc. (low token usage).
+  Future<String> generateOneShot(String prompt) async {
+    if (!_initialized) throw Exception("AI Service not initialized");
+    if (_useOpenRouter) return _openRouter!.generateContent(prompt);
+    final r = await _model.generateContent([Content.text(prompt)]);
+    return r.text?.trim() ?? '';
   }
 
   Future<String> createNewSession() async {
@@ -53,15 +70,14 @@ class AIConsultantService {
   Future<void> loadSession(String sessionId) async {
     if (!_initialized) throw Exception("AI Service not initialized");
     _currentSessionId = sessionId;
+    if (_useOpenRouter) return; // OpenRouter is stateless; history built per request
 
     final box = BoxManager().getBox<ChatMessageModel>(BoxManager.chatBoxName, _userId);
-    // Filter messages for this session
     final history = box.values
         .where((m) => m.sessionId == sessionId)
         .toList()
         ..sort((a,b) => a.createdAt.compareTo(b.createdAt));
 
-    // Build Gemini History (System Prompt + Saved Messages)
     final List<Content> geminiHistory = [
       Content.text('''
         You are Atlas, an intelligent financial advisor app.
@@ -80,22 +96,20 @@ class AIConsultantService {
       '''),
       Content.model([TextPart('Understood! I am Atlas, your dedicated financial partner. 🏦')]),
     ];
-    
-    // Strict Alternation Sanitization
+
     String lastRole = 'model';
     for (var msg in history) {
       final role = (msg.senderId == 'user') ? 'user' : 'model';
-      final text = msg.text.isEmpty ? '.' : msg.text; 
-      
+      final text = msg.text.isEmpty ? '.' : msg.text;
       if (role == lastRole) {
         final lastContent = geminiHistory.last;
         final newParts = List<Part>.from(lastContent.parts);
         if (newParts.isNotEmpty && newParts.last is TextPart) {
-           final prevText = (newParts.last as TextPart).text;
-           newParts.removeLast();
-           newParts.add(TextPart('$prevText\n$text'));
+          final prevText = (newParts.last as TextPart).text;
+          newParts.removeLast();
+          newParts.add(TextPart('$prevText\n$text'));
         } else {
-           newParts.add(TextPart(text));
+          newParts.add(TextPart(text));
         }
         geminiHistory.removeLast();
         geminiHistory.add(Content(role, newParts));
@@ -105,107 +119,113 @@ class AIConsultantService {
         lastRole = role;
       }
     }
-    
-    // Fix: Ensure history ends with Model so the next sendMessage (User) is valid
     if (lastRole == 'user') {
-       geminiHistory.add(Content.model([TextPart('... (Context restored)')]));
+      geminiHistory.add(Content.model([TextPart('... (Context restored)')]));
     }
-
     _chatSession = _model.startChat(history: geminiHistory);
   }
 
   /// Main message handler
   Future<String> sendMessage(String text) async {
-    if (!_initialized || _chatSession == null || _currentSessionId == null) {
+    if (!_initialized || _currentSessionId == null) {
+      return "AI not ready. Please restart chat.";
+    }
+    if (!_useOpenRouter && _chatSession == null) {
       return "AI not ready. Please restart chat.";
     }
 
     try {
-      // 0. Persist User Message
       final msgBox = BoxManager().getBox<ChatMessageModel>(BoxManager.chatBoxName, _userId);
       await msgBox.add(ChatMessageModel(
-        text: text, 
-        senderId: 'user', 
+        text: text,
+        senderId: 'user',
         createdAt: DateTime.now(),
         sessionId: _currentSessionId!,
       ));
 
-      // 1. Intent Analysis (Does this need data?)
+      String? contextStr;
       final intentPrompt = '''
       Analyze the user query: "$text"
       Does this require financial data?
-      
       Output JSON ONLY:
       { "needs_data": true/false, "keywords": [], "timeframe_days": 30 }
       ''';
-      
-      String? contextStr;
+
       try {
-        final intentResponse = await _model.generateContent([Content.text(intentPrompt)]);
-        final jsonText = intentResponse.text?.replaceAll(RegExp(r'```json|```'), '').trim();
-        
+        String? jsonText;
+        if (_useOpenRouter) {
+          jsonText = await _openRouter!.generateContent(intentPrompt);
+          jsonText = jsonText.replaceAll(RegExp(r'```json|```'), '').trim();
+        } else {
+          final intentResponse = await _model.generateContent([Content.text(intentPrompt)]);
+          jsonText = intentResponse.text?.replaceAll(RegExp(r'```json|```'), '').trim();
+        }
         if (jsonText != null && jsonText.contains('"needs_data": true')) {
-          await BoxManager().openAllBoxes(_userId); 
+          await BoxManager().openAllBoxes(_userId);
           final transactions = BoxManager().getBox<Transaction>(BoxManager.transactionsBoxName, _userId).values;
-          
           final now = DateTime.now();
-          final cutoff = now.subtract(const Duration(days: 90)); // 90 days context
-          
+          final cutoff = now.subtract(const Duration(days: 90));
           final relevantTxns = transactions.where((t) {
             if (t.date.isBefore(cutoff)) return false;
             final queryLower = text.toLowerCase();
-            return t.title.toLowerCase().contains(queryLower) || 
-                   t.categoryName.toLowerCase().contains(queryLower);
+            return t.title.toLowerCase().contains(queryLower) ||
+                t.categoryName.toLowerCase().contains(queryLower);
           }).toList();
-          
           double total = 0;
           for (var t in relevantTxns) total += t.amount;
-          
           if (relevantTxns.isNotEmpty) {
-             contextStr = '[CONTEXT: Found ${relevantTxns.length} matching transactions. Total: KES ${total.toStringAsFixed(0)}. Top 5: ${relevantTxns.take(5).map((t) => "${t.title}: ${t.amount}").join(", ")}]';
+            contextStr = '[CONTEXT: Found ${relevantTxns.length} matching transactions. Total: KES ${total.toStringAsFixed(0)}. Top 5: ${relevantTxns.take(5).map((t) => "${t.title}: ${t.amount}").join(", ")}]';
           } else {
-             final recent = transactions.toList()..sort((a,b) => b.date.compareTo(a.date));
-             final last5 = recent.take(5).toList();
-              contextStr = '[CONTEXT: No specific matches. Last 5 txns: ${last5.map((t) => "${t.title}: ${t.amount}").join(", ")}]';
+            final recent = transactions.toList()..sort((a,b) => b.date.compareTo(a.date));
+            final last5 = recent.take(5).toList();
+            contextStr = '[CONTEXT: No specific matches. Last 5 txns: ${last5.map((t) => "${t.title}: ${t.amount}").join(", ")}]';
           }
-
-          // Fetch Investments Context
           final invBox = BoxManager().getBox<InvestmentModel>(BoxManager.investmentsBoxName, _userId);
           if (invBox.isNotEmpty) {
-             final investments = invBox.values;
-             final invTotal = investments.fold<double>(0.0, (sum, i) => sum + i.currentValue);
-             final invDetails = investments.map((i) => "${i.name} (${i.currentValue})").join(", ");
-             
-             final invContext = "[INVESTMENTS: Total Value: KES ${invTotal.toStringAsFixed(0)}. Assets: $invDetails]";
-             contextStr = (contextStr == null) ? invContext : "$contextStr\n$invContext";
+            final investments = invBox.values;
+            final invTotal = investments.fold<double>(0.0, (sum, i) => sum + i.currentValue);
+            final invDetails = investments.map((i) => "${i.name} (${i.currentValue})").join(", ");
+            final invContext = "[INVESTMENTS: Total Value: KES ${invTotal.toStringAsFixed(0)}. Assets: $invDetails]";
+            contextStr = contextStr == null ? invContext : "$contextStr\n$invContext";
           }
         }
       } catch (e) {
         print('Intent error: $e');
       }
 
-      // 2. Chat Query
       var messageToSend = text;
-      if (contextStr != null) {
-        messageToSend = '$contextStr\n\nUser Question: $text';
+      if (contextStr != null) messageToSend = '$contextStr\n\nUser Question: $text';
+
+      String responseText;
+      if (_useOpenRouter) {
+        final history = msgBox.values
+            .where((m) => m.sessionId == _currentSessionId!)
+            .toList()
+          ..sort((a,b) => a.createdAt.compareTo(b.createdAt));
+        final messages = <Map<String, String>>[
+          {'role': 'system', 'content': '''You are Atlas, an intelligent financial advisor app. Help the user manage money, understand spending, and plan. Be friendly, concise, insightful. Use emojis. You are a FINANCIAL ASSISTANT only; if the topic is not financial, say "I focus only on your financial health! 💰" If I provide [CONTEXT: ...], use it to answer.'''},
+        ];
+        for (var i = 0; i < history.length; i++) {
+          final m = history[i];
+          final isLast = i == history.length - 1;
+          final content = (isLast && m.senderId == 'user') ? messageToSend : m.text;
+          messages.add({'role': m.senderId == 'user' ? 'user' : 'assistant', 'content': content});
+        }
+        responseText = await _openRouter!.generateChat(messages);
+        if (responseText.isEmpty) responseText = "I'm having trouble thinking right now. 😵‍💫";
+      } else {
+        final response = await _chatSession!.sendMessage(Content.text(messageToSend));
+        responseText = response.text ?? "I'm having trouble thinking right now. 😵‍💫";
       }
-      
-      final response = await _chatSession!.sendMessage(Content.text(messageToSend));
-      final responseText = response.text ?? "I'm having trouble thinking right now. 😵‍💫";
-      
-      // 3. Persist AI Response
+
       await msgBox.add(ChatMessageModel(
-        text: responseText, 
-        senderId: 'ai', 
+        text: responseText,
+        senderId: 'ai',
         createdAt: DateTime.now(),
-        sessionId: _currentSessionId!
+        sessionId: _currentSessionId!,
       ));
-      
-      // 4. Update Session Metadata & Title
       _updateSessionMetadata(text);
-
       return responseText;
-
     } catch (e) {
       return "Error: $e";
     }
@@ -228,18 +248,20 @@ class AIConsultantService {
   
   Future<void> _generateTitle(ChatSessionModel session) async {
     try {
-      // Use a separate chat or the model directly
       final prompt = '''
       Summarize the following conversation intent into a short Title (max 4 words).
       User asked: "${session.summary}"
-      
       Output ONLY the title. No quotes.
       Example: "Budget Advice", "Uber Spending".
       ''';
-      
-      final response = await _model.generateContent([Content.text(prompt)]);
-      final title = response.text?.trim() ?? session.title;
-      
+      String title = session.title;
+      if (_useOpenRouter) {
+        title = await _openRouter!.generateContent(prompt);
+        title = title.trim();
+      } else {
+        final response = await _model.generateContent([Content.text(prompt)]);
+        title = response.text?.trim() ?? session.title;
+      }
       if (title.isNotEmpty) {
         session.title = title;
         session.save();
@@ -265,24 +287,24 @@ class AIConsultantService {
 
     // Generate NEW Insight
     try {
-      // 1. Build Context
       final context = await _buildContext(userId);
-      
-      // 2. Prompt
       final prompt = '''
       You are Atlas, a financial advisor.
       Context: $context
-      
       Task: Give me ONE short, actionable, 1-sentence financial tip for today.
       Focus on spending habits, upcoming bills, or savings.
       If no data is available, give a general saving tip.
-      
       Output JSON ONLY:
       { "text": "Your tip here", "type": "positive/neutral/warning" }
       ''';
-      
-      final response = await _model.generateContent([Content.text(prompt)]);
-      final jsonText = response.text?.replaceAll(RegExp(r'```json|```'), '').trim();
+      String? jsonText;
+      if (_useOpenRouter) {
+        jsonText = await _openRouter!.generateContent(prompt);
+        jsonText = jsonText.replaceAll(RegExp(r'```json|```'), '').trim();
+      } else {
+        final response = await _model.generateContent([Content.text(prompt)]);
+        jsonText = response.text?.replaceAll(RegExp(r'```json|```'), '').trim();
+      }
       
       String text = "Save a little every day!"; // Fallback
       String type = "neutral";

@@ -575,14 +575,29 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
   // --- Chart Helpers ---
 
   double _calculateMaxY(List<Transaction> transactions) {
-     if (transactions.isEmpty) return 1000;
-     double maxVal = 0;
-     // Simple estimate: max single transaction * 1.5, or grouping max? 
-     // Better: pre-calc groups and find max. For now, static safe buffer relative to highest tx
-     for(var t in transactions) {
-       if(t.amount > maxVal) maxVal = t.amount;
-     }
-     return maxVal * 1.2;
+    if (transactions.isEmpty) return 1000;
+    // Use same aggregation as bar chart so scale matches the bars (income/expense per group)
+    final Map<int, double> incomeMap = {};
+    final Map<int, double> expenseMap = {};
+    for (var t in transactions) {
+      int xIndex = 0;
+      final date = t.date;
+      if (_selectedPeriod == TimePeriod.thisWeek) {
+        xIndex = date.weekday % 7;
+      } else {
+        xIndex = (date.day - 1) ~/ 7;
+      }
+      if (t.type == TransactionType.income) {
+        incomeMap[xIndex] = (incomeMap[xIndex] ?? 0) + t.amount;
+      } else {
+        expenseMap[xIndex] = (expenseMap[xIndex] ?? 0) + t.amount;
+      }
+    }
+    double maxVal = 0;
+    for (var v in incomeMap.values) { if (v > maxVal) maxVal = v; }
+    for (var v in expenseMap.values) { if (v > maxVal) maxVal = v; }
+    if (maxVal <= 0) return 1000;
+    return (maxVal * 1.15).clamp(1000, double.infinity);
   }
 
   Widget _getBottomTitles(double value, TitleMeta meta, TimePeriod period) {
@@ -678,7 +693,7 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
                  builder: (context) => CategoryDetailScreen(
                    categoryName: catName,
                    categoryEnum: e.key,
-                   transactions: categoryTransactions,
+                   selectedPeriod: _selectedPeriod,
                  ),
                ),
              );

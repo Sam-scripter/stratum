@@ -150,7 +150,11 @@ class _SmsScanningScreenState extends State<SmsScanningScreen>
     });
 
     try {
-      // Start scanning with progress updates
+      // On first install: discover all accounts (MPESA, KCB, COOP, etc.) from full inbox first,
+      // then scan messages so transactions are attributed to those accounts.
+      await _smsReaderService.discoverAccounts(messageCount: 10000);
+
+      // Start scanning with progress updates (only processes messages for existing accounts)
       await for (final progress in _smsReaderService.scanAllMessages()) {
         if (!mounted) break;
 

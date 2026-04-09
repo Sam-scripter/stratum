@@ -5,6 +5,7 @@ import '../../models/transaction/transaction_model.dart';
 import '../pattern learning/pattern_learning_service.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:stratum/services/ai/ai_service.dart';
+import 'package:stratum/services/subscription/subscription_service.dart';
 
 class UnifiedTransactionParser {
   static const String _localRulesPath = 'assets/parsing_rules.json';
@@ -240,8 +241,8 @@ class UnifiedTransactionParser {
         if (learnedCat != null) category = learnedCat;
       } else {
         // AI ANALYST (Second Priority)
-        // Only queries if no manual pattern exists AND allowAI is true
-        if (allowAI) {
+        // Skip AI for Stratum Elite; use general. Only query when allowAI and not Elite.
+        if (allowAI && !SubscriptionService().isElite) {
           try {
             final aiResult = await AIService().cleanMerchantAndCategory(
                recipientOrSender, 

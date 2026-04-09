@@ -78,52 +78,76 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
         elevation: 0,
         centerTitle: true,
       ),
-      body: _isLoading 
-        ? Center(child: CircularProgressIndicator(color: AppTheme.primaryGold))
-        : ValueListenableBuilder<Box<ChatSessionModel>>(
-            valueListenable: BoxManager().getBox<ChatSessionModel>(BoxManager.chatSessionBoxName, _userId).listenable(),
-            builder: (context, box, _) {
-              final sessions = box.values.toList()
-                ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-
-              if (sessions.isEmpty) {
-                return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+      body: _isLoading
+          ? Center(child: CircularProgressIndicator(color: AppTheme.primaryGold))
+          : Column(
+              children: [
+                // Beta notice: 5 messages, coming in future updates
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  color: AppTheme.primaryGold.withOpacity(0.15),
+                  child: Row(
                     children: [
-                      Icon(Icons.chat_bubble_outline, size: 64, color: Colors.white24),
-                      SizedBox(height: 16),
-                      Text(
-                        "No conversations yet",
-                        style: GoogleFonts.poppins(color: Colors.white54),
-                      ),
-                      SizedBox(height: 24),
-                      ElevatedButton.icon(
-                        onPressed: _startNewChat,
-                        icon: Icon(Icons.add),
-                        label: Text("Start New Chat"),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryGold,
-                          foregroundColor: Colors.black,
-                          padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      Icon(Icons.info_outline, color: AppTheme.primaryGold, size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          "Atlas is still being worked on. You have 5 messages to try it — full experience in future updates.",
+                          style: GoogleFonts.poppins(fontSize: 12, color: Colors.white70),
                         ),
-                      )
+                      ),
                     ],
                   ),
-                );
-              }
+                ),
+                Expanded(
+                  child: ValueListenableBuilder<Box<ChatSessionModel>>(
+                  valueListenable: BoxManager().getBox<ChatSessionModel>(BoxManager.chatSessionBoxName, _userId).listenable(),
+                  builder: (context, box, _) {
+                    final sessions = box.values.toList()
+                      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
-              return ListView.separated(
-                padding: const EdgeInsets.all(16),
-                itemCount: sessions.length,
-                separatorBuilder: (ctx, i) => SizedBox(height: 12),
-                itemBuilder: (context, index) {
-                  final session = sessions[index];
-                  return _buildSessionCard(session);
-                },
-              );
-            },
-          ),
+                    if (sessions.isEmpty) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.chat_bubble_outline, size: 64, color: Colors.white24),
+                            SizedBox(height: 16),
+                            Text(
+                              "No conversations yet",
+                              style: GoogleFonts.poppins(color: Colors.white54),
+                            ),
+                            SizedBox(height: 24),
+                            ElevatedButton.icon(
+                              onPressed: _startNewChat,
+                              icon: Icon(Icons.add),
+                              label: Text("Start New Chat"),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.primaryGold,
+                                foregroundColor: Colors.black,
+                                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                              ),
+                            )
+                          ],
+                        ),
+                      );
+                    }
+
+                    return ListView.separated(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: sessions.length,
+                      separatorBuilder: (ctx, i) => SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final session = sessions[index];
+                        return _buildSessionCard(session);
+                      },
+                    );
+                  },
+                ),
+                ),
+              ],
+            ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _startNewChat,
         backgroundColor: AppTheme.primaryGold,

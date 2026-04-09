@@ -22,7 +22,7 @@ import 'package:stratum/services/ai/ai_consultant_service.dart';
 import 'package:stratum/services/sms_reader/sms_reader_service.dart';
 import 'package:stratum/services/subscription/subscription_service.dart';
 import 'package:stratum/core/secrets.dart'; 
-import 'package:stratum/services/update/update_service.dart'; // NEW
+import 'package:stratum/services/update/update_service.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -137,7 +137,7 @@ class _MainScreenState extends State<MainScreen> {
   final List<Widget> _screens = [
     const HomeScreen(),
     const TransactionsScreen(),
-    const BudgetScreen(), // userId passed optionally now, or we can pass it
+    const BudgetScreen(),
     const InvestmentsScreen(),
     const ProfileScreen(),
   ];
@@ -154,7 +154,7 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     // Update BudgetScreen usage if needed, but we made userId optional there.
-    // We can also rebuild _screens if we want to pass userId explicitely, 
+    // We can also rebuild _screens if we want to pass userId explicitly,
     // but SingleTickerProviderStateMixin in BudgetScreen might complain if recreated?
     // Actually, _screens usually should be built in build() or initialized in initState.
     // Keeping it simple.

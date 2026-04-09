@@ -155,9 +155,9 @@ class DiscoverDetailScreen extends StatelessWidget {
     );
 
     try {
-      // Send message via service
-      final response = await AIConsultantService().sendMessage(prompt);
-      
+      // One-shot query (no chat session) to keep token usage low
+      final response = await AIConsultantService().generateOneShot(prompt);
+
       Navigator.pop(context); // Close loader
 
       // Navigate to Home -> Chat Tab (Index 2 in MainScreen? No, Chat is separate or modal?)
@@ -187,8 +187,19 @@ class DiscoverDetailScreen extends StatelessWidget {
       ));
       
     } catch (e) {
-      Navigator.pop(context); // Close loader
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Atlas Error: $e")));
+      if (context.mounted) Navigator.pop(context); // Close loader
+      final err = e.toString().toLowerCase();
+      final isUnavailable = err.contains('quota') ||
+          err.contains('exceeded') ||
+          err.contains('credits') ||
+          err.contains('afford') ||
+          err.contains('max_tokens');
+      final message = isUnavailable
+          ? 'Atlas is not available right now.'
+          : 'Atlas Error: $e';
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      }
     }
   }
 }

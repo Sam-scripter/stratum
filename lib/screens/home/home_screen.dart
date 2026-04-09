@@ -11,6 +11,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:showcaseview/showcaseview.dart';
 import 'package:stratum/repositories/financial_repository.dart';
 import 'package:stratum/screens/accounts/account_detail_screen.dart';
 import 'package:stratum/screens/accounts/add_account_screen.dart';
@@ -58,11 +60,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isCategoryExpanded = false;
   TimePeriod _selectedPeriod = TimePeriod.today;
 
+  // Tutorial showcase keys (one per step)
+  final GlobalKey _keyNetWorth = GlobalKey();
+  final GlobalKey _keyAccounts = GlobalKey();
+  final GlobalKey _keyCashFlow = GlobalKey();
+  final GlobalKey _keyFinancialHealth = GlobalKey();
+  final GlobalKey _keyCategories = GlobalKey();
+
+  bool _tutorialCompleted = false;
+  bool _tutorialStarted = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    
+    _loadTutorialCompleted();
     // Initial data fetch
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -70,6 +82,64 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _checkPermissions();
       }
     });
+  }
+
+  Future<void> _loadTutorialCompleted() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _tutorialCompleted = prefs.getBool('homeTutorialCompleted') ?? false;
+      });
+    }
+  }
+
+  void _onTutorialFinish() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('homeTutorialCompleted', true);
+    if (mounted) {
+      setState(() => _tutorialCompleted = true);
+    }
+    // Show bank balance disclaimer once if we have at least one bank account (not MPESA)
+    if (!mounted) return;
+    if (prefs.getBool('hasShownBankBalanceDisclaimer') == true) return;
+    final accounts = context.read<FinancialRepository>().accounts;
+    final hasBank = accounts.any((a) => a.type == AccountType.Bank);
+    if (!hasBank) return;
+    await prefs.setBool('hasShownBankBalanceDisclaimer', true);
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A2332),
+        title: Text(
+          'Bank account balances',
+          style: GoogleFonts.poppins(
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
+        ),
+        content: Text(
+          'We detected one or more bank accounts (e.g. KCB, COOP). Their balances are calculated from read messages and may not always be accurate. You can correct the balance anytime from the account card: tap the account → ⋮ menu → Update balance.',
+          style: GoogleFonts.poppins(
+            color: Colors.white70,
+            fontSize: 14,
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              'Got it',
+              style: GoogleFonts.poppins(
+                color: AppTheme.primaryGold,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _checkPermissions() async {
@@ -157,51 +227,104 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<FinancialRepository>(
-      builder: (context, repository, child) {
-        final accounts = repository.accounts;
-        final recentTransactions = repository.recentTransactions;
-        final netWorth = _calculateNetWorth(accounts);
-        
-        // Always get fresh summary to ensure reactivity
-        final currentSummary = repository.getSummary(_selectedPeriod); 
+    return ShowCaseWidget(
+      onFinish: _onTutorialFinish,
+      enableAutoScroll: true,
+      builder: (showcaseContext) {
+        return Consumer<FinancialRepository>(
+          builder: (context, repository, child) {
+            final accounts = repository.accounts;
+            final recentTransactions = repository.recentTransactions;
+            final netWorth = _calculateNetWorth(accounts);
+            final currentSummary = repository.getSummary(_selectedPeriod);
 
-        return Scaffold(
-          backgroundColor: const Color(0xFF0A1628),
-          body: SafeArea(
-            child: RefreshIndicator(
-              onRefresh: () async {
-                await repository.refresh();
-              },
-              color: AppTheme.primaryGold,
-              backgroundColor: const Color(0xFF1A2332),
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    _buildHeader(),
-                    const SizedBox(height: 14),
-                    _buildNetWorthCard(netWorth, accounts, repository.isLoading),
-                    const SizedBox(height: 20),
-                    _buildAccountsScroll(accounts, repository.isLoading),
-                    const SizedBox(height: 20),
-                    _buildQuickStats(currentSummary),
-                    const SizedBox(height: 32),
-                    _buildQuickActions(),
-                    const SizedBox(height: 32),
-                    _buildFinancialHealthScore(),
-                    const SizedBox(height: 32),
-                    _buildAIInsights(),
-                    const SizedBox(height: 32),
-                    _buildSpendingByCategory(repository), // Pass repository if needed for queries
-                    const SizedBox(height: 32),
-                    _buildRecentTransactions(recentTransactions),
-                    const SizedBox(height: 100),
-                  ],
+            // Start tutorial only once ever: check persisted flag in callback (state resets when tab switches)
+            if (!_tutorialStarted) {
+              _tutorialStarted = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) async {
+                final prefs = await SharedPreferences.getInstance();
+                if (prefs.getBool('homeTutorialCompleted') == true) return;
+                if (!mounted) return;
+                ShowCaseWidget.of(showcaseContext).startShowCase([
+                  _keyNetWorth,
+                  _keyAccounts,
+                  _keyCashFlow,
+                  _keyFinancialHealth,
+                  _keyCategories,
+                ]);
+              });
+            }
+
+            return Scaffold(
+              backgroundColor: const Color(0xFF0A1628),
+              body: SafeArea(
+                child: RefreshIndicator(
+                  onRefresh: () async {
+                    await repository.refresh();
+                  },
+                  color: AppTheme.primaryGold,
+                  backgroundColor: const Color(0xFF1A2332),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        _buildHeader(),
+                        const SizedBox(height: 14),
+                        Showcase(
+                          key: _keyNetWorth,
+                          title: 'Total Net Worth',
+                          description:
+                              'This is the sum of all your account balances below (savings, M-Pesa, bank accounts minus any liabilities).',
+                          child: _buildNetWorthCard(
+                              netWorth, accounts, repository.isLoading),
+                        ),
+                        const SizedBox(height: 20),
+                        Showcase(
+                          key: _keyAccounts,
+                          title: 'Account Cards',
+                          description:
+                              'Accounts from your messages (e.g. M-Pesa) and their balance. Tap a card to view all transactions. Use the + card to add a new account (bank or cash).',
+                          child: _buildAccountsScroll(
+                              accounts, repository.isLoading),
+                        ),
+                        const SizedBox(height: 20),
+                        Showcase(
+                          key: _keyCashFlow,
+                          title: 'Cash Flow',
+                          description:
+                              'Income and expenses grouped by period. Use the dropdown to pick Today, Week, Month, or Year.',
+                          child: _buildQuickStats(currentSummary),
+                        ),
+                        const SizedBox(height: 32),
+                        _buildQuickActions(),
+                        const SizedBox(height: 32),
+                        Showcase(
+                          key: _keyFinancialHealth,
+                          title: 'Financial Health',
+                          description:
+                              'A quick score based on your spending, savings, and habits. Use it as a guide to improve over time.',
+                          child: _buildFinancialHealthScore(),
+                        ),
+                        const SizedBox(height: 32),
+                        _buildAIInsights(),
+                        const SizedBox(height: 32),
+                        Showcase(
+                          key: _keyCategories,
+                          title: 'Spending by Category',
+                          description:
+                              'Categories are estimated at first. Edit your transactions and pick the right category—the app learns from your choices and this chart updates.',
+                          child: _buildSpendingByCategory(repository),
+                        ),
+                        const SizedBox(height: 32),
+                        _buildRecentTransactions(recentTransactions),
+                        const SizedBox(height: 100),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-          floatingActionButton: _buildCleanFAB(context),
+              floatingActionButton: _buildCleanFAB(context),
+            );
+          },
         );
       },
     );
@@ -1161,7 +1284,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         () {
                           Navigator.of(context).push(
                             MaterialPageRoute(
-                              builder: (context) => TransactionDetailScreen(
+                               builder: (context) => TransactionDetailScreen(
                                 transaction: transaction,
                               ),
                             ),

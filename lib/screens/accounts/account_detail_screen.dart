@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
 import '../../models/account/account_model.dart';
 import '../../models/transaction/transaction_model.dart';
 import '../../models/box_manager.dart';
 import '../../theme/app_theme.dart';
+import '../../services/sms_reader/sms_reader_service.dart';
 import '../transactions/transaction_detail_screen.dart';
 import '../transactions/add_transaction_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -84,6 +86,109 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     setState(() {
       _isLoading = false;
     });
+  }
+
+  Future<void> _showUpdateBalanceDialog() async {
+    final controller = TextEditingController(
+      text: _liveAccount.balance.toStringAsFixed(0),
+    );
+    final result = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A2332),
+        title: Text(
+          'Update balance',
+          style: GoogleFonts.poppins(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Balances are calculated from read messages and may sometimes be wrong. Enter the correct current balance for this account. This will add a balance correction so reports stay consistent.',
+              style: GoogleFonts.poppins(
+                color: Colors.white70,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.number,
+              style: GoogleFonts.poppins(color: Colors.white),
+              decoration: InputDecoration(
+                labelText: 'Current balance (KES)',
+                labelStyle: GoogleFonts.poppins(color: Colors.white54),
+                filled: true,
+                fillColor: Colors.white12,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: GoogleFonts.poppins(color: Colors.white70)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
+            onPressed: () {
+              final value = double.tryParse(controller.text.trim());
+              if (value != null && value >= 0) {
+                Navigator.pop(ctx, value);
+              }
+            },
+            child: Text('Save', style: GoogleFonts.poppins(color: Colors.black)),
+          ),
+        ],
+      ),
+    );
+    if (result == null || !mounted) return;
+    await _applyBalanceCorrection(result);
+  }
+
+  Future<void> _applyBalanceCorrection(double newBalance) async {
+    setState(() => _isLoading = true);
+    try {
+      await _boxManager.openAllBoxes(_userId);
+      final transactionsBox = _boxManager.getBox<Transaction>(
+        BoxManager.transactionsBoxName,
+        _userId,
+      );
+      // Add a balance-correction transaction (anchor for reconciliation; no income/expense impact)
+      final correction = Transaction(
+        id: const Uuid().v4(),
+        title: 'Balance correction',
+        amount: 0,
+        type: TransactionType.transfer,
+        category: TransactionCategory.transfer,
+        date: DateTime.now(),
+        accountId: _liveAccount.id,
+        newBalance: newBalance,
+      );
+      transactionsBox.put(correction.id, correction);
+      await SmsReaderService(_userId).reconcileBalances(_liveAccount.id);
+      if (mounted) await _loadTransactions();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Balance updated. Reports remain consistent.'),
+            backgroundColor: AppTheme.accentGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: AppTheme.accentRed),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _confirmDelete() async {
@@ -207,17 +312,23 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
                         ),
                       ),
                       
-                    // Delete Option
+                    // Menu: Update balance (banks only), Delete
                     PopupMenuButton<String>(
                       icon: const Icon(Icons.more_vert, color: Colors.white),
                       color: const Color(0xFF1A2332),
                       onSelected: (value) {
-                         if (value == 'delete') _confirmDelete();
+                        if (value == 'update_balance') _showUpdateBalanceDialog();
+                        else if (value == 'delete') _confirmDelete();
                       },
                       itemBuilder: (context) => [
+                        if (_liveAccount.type == AccountType.Bank)
+                          const PopupMenuItem(
+                            value: 'update_balance',
+                            child: Text('Update balance', style: TextStyle(color: Colors.white)),
+                          ),
                         const PopupMenuItem(
                           value: 'delete',
-                          child: Text('Delete Account', style: TextStyle(color: Colors.white)),
+                          child: Text('Delete Account', style: TextStyle(color: Colors.red)),
                         ),
                       ],
                     ),
@@ -402,21 +513,25 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
           ),
           const SizedBox(height: 16),
 
-          // Disclaimer Info
-            Row(
+          // Disclaimer: for banks, balance may be wrong and can be updated
+          Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(Icons.info_outline, color: Colors.white30, size: 14),
               const SizedBox(width: 4),
               Flexible(
                 child: Text(
-                  'Income/Expense based on detected transactions',
+                  _liveAccount.type == AccountType.Bank
+                      ? 'Balance from read messages; may be wrong. Use ⋮ → Update balance if needed.'
+                      : 'Balance from read messages.',
                   style: GoogleFonts.poppins(
                     fontSize: 10,
                     color: Colors.white30,
-                    fontStyle: FontStyle.italic
+                    fontStyle: FontStyle.italic,
                   ),
+                  textAlign: TextAlign.center,
                   overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
                 ),
               ),
             ],

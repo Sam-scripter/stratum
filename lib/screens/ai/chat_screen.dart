@@ -7,7 +7,7 @@ import '../../theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../models/box_manager.dart';
 import '../../models/ai/chat_message_model.dart';
-import '../../core/secrets.dart'; // NEW
+import '../../core/secrets.dart';
 
 class ChatScreen extends StatefulWidget {
   final String sessionId;
@@ -75,7 +75,34 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  static const int _maxAtlasMessages = 5;
+
+  int _countUserMessages() {
+    final userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (userId.isEmpty) return 0;
+    try {
+      final box = BoxManager().getBox<ChatMessageModel>(BoxManager.chatBoxName, userId);
+      return box.values.where((m) => m.senderId == 'user').length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   Future<void> _onSend(ChatMessage message) async {
+    if (_countUserMessages() >= _maxAtlasMessages) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            "You've used your 5 trial messages. Full Atlas experience coming in future updates.",
+            style: GoogleFonts.poppins(),
+          ),
+          backgroundColor: AppTheme.primaryGold,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _messages.insert(0, message); // Add user message
       _isTyping = true;
@@ -83,7 +110,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     try {
       final responseText = await _aiService.sendMessage(message.text);
-      
+
       final aiMessage = ChatMessage(
         text: responseText,
         user: _ai,
@@ -95,12 +122,24 @@ class _ChatScreenState extends State<ChatScreen> {
         _isTyping = false;
       });
     } catch (e) {
+      final err = e.toString().toLowerCase();
+      final isUnavailable = err.contains('quota') ||
+          err.contains('exceeded') ||
+          err.contains('credits') ||
+          err.contains('afford') ||
+          err.contains('max_tokens');
+      final friendly = isUnavailable
+          ? 'Atlas is not available right now.'
+          : 'Sorry, something went wrong. Please try again.';
       setState(() {
-         _messages.insert(0, ChatMessage(
-            text: "Sorry, I encountered an error: $e",
+        _messages.insert(
+          0,
+          ChatMessage(
+            text: friendly,
             user: _ai,
             createdAt: DateTime.now(),
-         ));
+          ),
+        );
         _isTyping = false;
       });
     }

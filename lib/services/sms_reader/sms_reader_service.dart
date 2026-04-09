@@ -156,8 +156,9 @@ class SmsReaderService {
     }
   }
 
-  /// Discover financial accounts from SMS history
-  Future<List<Account>> discoverAccounts() async {
+  /// Discover financial accounts from SMS history.
+  /// [messageCount] defaults to 500; use a larger value (e.g. 10000) on first install to discover all accounts from full inbox.
+  Future<List<Account>> discoverAccounts({int messageCount = 500}) async {
     try {
       await _boxManager.openAllBoxes(userId);
       final accountsBox = _boxManager.getBox<Account>(
@@ -165,10 +166,9 @@ class SmsReaderService {
         userId,
       );
 
-      // Get recent messages (check enough to find banks, e.g. 500)
       final messages = await _query.querySms(
         kinds: [SmsQueryKind.inbox],
-        count: 500,
+        count: messageCount,
       );
 
       final Set<String> knownBanks = {
@@ -487,59 +487,30 @@ class SmsReaderService {
     } catch (_) {
       // No account found
     }
-    // SOURCE OF TRUTH CHECK
-    // If it's a Bank (not MPESA) and we don't track it yet, IGNORE IT.
-    // This prevents "Ghost Accounts" from duplicate confirmations.
-    if (accountType != 'MPESA' && account == null) {
-      // Exception: If the user specifically added a pattern for this sender, we might want to allow it?
-      // For now, adhere to the strict rule: Valid Account MUST exist for Banks.
+    // Only process messages for accounts we already track.
+    // All accounts (including MPESA) are created during first-install discovery; no auto-creation here.
+    if (account == null) {
       return null;
     }
 
-    if (account != null) {
-      // Ensure account type is correct
-      final correctType = accountType == 'MPESA'
-          ? AccountType.Mpesa
-          : AccountType.Bank;
-          
-      bool needsUpdate = false;
-      Account updatedAccount = account;
+    // Ensure account type and sender address are correct
+    final correctType = accountType == 'MPESA'
+        ? AccountType.Mpesa
+        : AccountType.Bank;
+    bool needsUpdate = false;
+    Account updatedAccount = account;
 
-      if (account.type != correctType) {
-        updatedAccount = updatedAccount.copyWith(type: correctType);
-        needsUpdate = true;
-      }
-      
-      // Update sender address if we have a more specific one
-      if (account.senderAddress != address) {
-         updatedAccount = updatedAccount.copyWith(senderAddress: address);
-         needsUpdate = true;
-      }
-
-      if (needsUpdate) {
-        accountsBox.put(account.id, updatedAccount);
-        account = updatedAccount;
-      }
-    } else {
-      // Only create new account for MPESA automatically
-      // OR if we implement a "Pending Review" bin later.
-      if (accountType == 'MPESA') {
-        print('Creating new account for $standardizedName');
-        
-        final newAccount = Account(
-          id: const Uuid().v4(),
-          name: standardizedName,
-          balance: 0.0,
-          type: AccountType.Mpesa,
-          lastUpdated: DateTime.now().toLocal(),
-          senderAddress: address,
-          isAutomated: true,
-        );
-        accountsBox.put(newAccount.id, newAccount);
-        account = newAccount;
-      } else {
-        return null; // Should be caught by Source of Truth check above, but safety first
-      }
+    if (account.type != correctType) {
+      updatedAccount = updatedAccount.copyWith(type: correctType);
+      needsUpdate = true;
+    }
+    if (account.senderAddress != address) {
+      updatedAccount = updatedAccount.copyWith(senderAddress: address);
+      needsUpdate = true;
+    }
+    if (needsUpdate) {
+      accountsBox.put(account.id, updatedAccount);
+      account = updatedAccount;
     }
 
     // Parse using unified parser
@@ -738,7 +709,8 @@ class SmsReaderService {
           // Account not found
         }
         
-        // Create Notification Record (Centralized Logic)
+        // In-app notification (Notifications screen); background service shows system
+        // notification with payload: transaction.id — tap navigates to TransactionDetailScreen.
         final notificationsBox = _boxManager.getBox<NotificationModel>(
           BoxManager.notificationsBoxName,
           userId,
